@@ -1,5 +1,5 @@
 use std::{fs, process::exit};
-use std::collections::HashMap;
+use std::collections::HashSet;
 use regex::Regex;
 
 fn main() {
@@ -32,17 +32,19 @@ fn main() {
     let re_down = Regex::new(r"^(?<down_name>\d{5}_[\w]+)\.down\.sql$").unwrap();
 
     let re_create = Regex::new(r"create (\w+) (?:if not exists\s+)?(\w+)").unwrap();
-    // don't include ^ for drop
     let re_drop= Regex::new(r"drop (\w+) (?:if exists\s+)?([\w,\s]+)").unwrap();
-    // let re_drop = Regex::new(r"drop (\w+)(?: if exists\s*)?(?:\s*)?([\w,\s]*);?$").unwrap();
+    // couldn't figure out how to handle multiple column drops w/ the re_drop...
+    let re_drop_column = Regex::new(r"drop column (?:if exists\s+)?([\w]+)").unwrap();
     let re_add = Regex::new(r"add (\w+) (?:if not exists\s+)?(\w+)").unwrap();
 
     // these are what we care about...ignore things like indexes, functions, etc.
     let db_structure = vec!["table", "type", "column"];
     let mut i = 1;
-    println!("{:?}", migration_files);
     while i < migration_files.len() {
         let migration_num = (i + 1) / 2;
+        println!();
+        println!("validating migration number {migration_num}");
+        println!();
         // validate up-format
         let up_name = &migration_files[i];
         if !re_up.is_match(&up_name) {
@@ -64,8 +66,8 @@ fn main() {
             exit(1)
         }
         
-        // todo move to hashmap
-        let mut m = HashMap::new();
+        // handle up-migration
+        let mut set = HashSet::new();
         
         // todo add path
         let up_path = format!("./migrations/{up_name}");
@@ -73,99 +75,79 @@ fn main() {
         let up_cleaned = re_no_multi_spaces.replace_all(&up_file, " ").to_lowercase();
         for (_, [entity, name]) in re_create.captures_iter(&up_cleaned).map(|c| c.extract()) {
             if db_structure.contains(&entity) {
-                m.insert(name, "create");
+                set.insert(format!("{entity}-{name}"));
             }
         }
         for (_, [entity, name]) in re_add.captures_iter(&up_cleaned).map(|c| c.extract()) {
             if db_structure.contains(&entity) {
-                m.insert(name, "add");
+                set.insert(format!("{entity}-{name}"));
             }
+        }
+        for (_, [name]) in re_drop_column.captures_iter(&up_cleaned).map(|c| c.extract()) {
+            set.insert(format!("column-{name}"));
         }
         for (_, [entity, name]) in re_drop.captures_iter(&up_cleaned).map(|c| c.extract()) {
-            if db_structure.contains(&entity) {
+            if db_structure.contains(&entity) && entity != "column" {
                 // let name = name.trim_end_matches(" cascade;");
-                m.insert(name, "drop");
+                set.insert(format!("{entity}-{name}"));
             }
         }
 
-        println!("m after up {:?}", m);
-        // for line in fs::read_to_string(&up_path).unwrap().lines() {
-        //     let lower = line.to_lowercase();
-        //     if re_create.is_match(&lower) {
-        //         if db_structure.contains(&re_create.captures(&lower).unwrap().get(1).unwrap().as_str()) {
-        //             let entity: String = re_create.captures(&lower).unwrap().get(2).unwrap().as_str().to_string();
-        //             m.insert(entity, "create");
-        //         }
-        //     }
-        //     if re_drop.is_match(&lower) {
-        //         if db_structure.contains(&re_drop.captures(&lower).unwrap().get(1).unwrap().as_str()) {
-        //             let entity: String = re_drop.captures(&lower).unwrap().get(2).unwrap().as_str().to_string();
-        //             let entity = entity.replace(" ", "");
-        //             println!("replacing spaces: {entity}");
-        //             // prob a way to drop "" here
-        //             let foo: Vec<&str> = entity.split(",").collect();
-        //             for f in foo {
-        //                 if f == "" {
-        //                     continue
-        //                 }
-        //                 m.insert(f.to_string(), "drop");
-        //             }
-        //             // m.insert(entity, "drop");
-        //         }
-        //     }
-        //     if re_add.is_match(&lower) {
-        //         if db_structure.contains(&re_add.captures(&lower).unwrap().get(1).unwrap().as_str()) {
-        //             let entity: String = re_add.captures(&lower).unwrap().get(2).unwrap().as_str().to_string();
-        //             m.insert(entity, "add");
-        //         }
-        //     }
-        // }
-
-        // println!("after up {:?}", m);
-
+        // handle down-migration
         let down_path = format!("./migrations/{down_name}");
         let down_file = fs::read_to_string(&down_path).expect("read up-migration");
         let down_cleaned = re_no_multi_spaces.replace_all(&down_file, " ").to_lowercase();
         println!("down cleaned: {down_cleaned}");
-        for (_, [_, name]) in re_create.captures_iter(&down_cleaned).map(|c| c.extract()) {
-            if !m.contains_key(&name) {
+        for (_, [entity, name]) in re_create.captures_iter(&down_cleaned).map(|c| c.extract()) {
+            if !set.contains(&format!("{entity}-{name}")) {
                 println!("{name} not created for down migration {migration_num}");
                 exit(1)
             }
-            println!("create match: removing {name}");
-            m.remove(&name).unwrap();
+            println!("create match found: removing {name}");
+            set.remove(&format!("{entity}-{name}"));
         }
-
-        // todo add this in
-
-        // for (_, [entity, name]) in re_add.captures_iter(&down_cleaned).map(|c| c.extract()) {
-        //     if db_structure.contains(&entity) {
-        //         m.insert(name, "add");
-        //     }
-        // }
-        for (_, [_, name]) in re_drop.captures_iter(&down_cleaned).map(|c| c.extract()) {
-            let foo: Vec<&str> = name.split(",").collect();
-            println!("foo {:?}", foo);
-            for f in foo {
-                if f == "" {
+        for (_, [name]) in re_drop_column.captures_iter(&down_cleaned).map(|c| c.extract()) {
+            if !set.contains(&format!("column-{name}")) {
+                println!("{name} not dropped for down migration {migration_num}");
+                exit(1)
+            }
+            println!("drop column match found: removing {name}");
+            set.remove(&format!("column-{name}"));
+        }
+        for (_, [entity, name]) in re_add.captures_iter(&down_cleaned).map(|c| c.extract()) {
+            if !set.contains(&format!("{entity}-{name}")) {
+                println!("{name} not added for down migration {migration_num}");
+                exit(1)
+            }
+            println!("add match found: removing {name}");
+            set.remove(&format!("{entity}-{name}"));
+        }
+        for (_, [entity, name]) in re_drop.captures_iter(&down_cleaned).map(|c| c.extract()) {
+            // we handled previously, so skip
+            if entity == "column" {
+                continue
+            }
+            let names: Vec<&str> = name.split(",").collect();
+            println!("names {:?}", names);
+            for name in names {
+                // get rid of cascade and any leading whitespace
+                let mut name = name.trim_end_matches(" cascade");
+                name = name.trim_start();
+                if name == "" {
                     continue
                 }
-                let f = f.trim_end_matches(" cascade");
-                println!("f {f}");
-                if !m.contains_key(f) {
-                    println!("{f} not dropped in down migration {migration_num} (added in the up-migration)");
+                if !set.contains(&format!("{entity}-{name}")) {
+                    println!("{name} not dropped in down migration {migration_num} (added in the up-migration)");
                     exit(1)
                 }
-                println!("drop match: removing {f}");
-                m.remove(f).unwrap();
+                println!("drop match found: removing {name}");
+                set.remove(&format!("{entity}-{name}"));
             }
         }
 
-        println!("after down {:?}", m); 
-
-        if m.len() > 0 {
-            for k in m.keys() {
-                println!("{k} is missing from the down migration")
+        if set.len() > 0 {
+            for e in set {
+                println!("{e} is missing from the down migration")
             }
             exit(1)
         }
