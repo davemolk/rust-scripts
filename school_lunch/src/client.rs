@@ -7,24 +7,24 @@ use serde_derive::Deserialize;
 const URL_BASE: &str = "https://webapis.schoolcafe.com/api/CalendarView/GetDailyMenuitemsByGrade?SchoolId=";
 
 #[derive(Debug, Deserialize)]
-pub struct Config {
+struct Config {
     school_id: String,
     grade: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
-pub struct LunchResponse {
-    pub entree: Vec<FoodResponse>
+struct LunchResponse {
+    entree: Vec<FoodResponse>
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "PascalCase")]
-pub struct FoodResponse {
-    pub menu_item_description: String, 
+struct FoodResponse {
+    menu_item_description: String, 
 }
 
-pub trait FoodApi {
+trait FoodApi {
     fn get_lunch(&self, url: String) -> Result<LunchResponse>;
 }
 
@@ -34,7 +34,7 @@ impl LunchClient {
     pub fn new() -> Self {
         LunchClient{}
     }
-    pub fn get_url(&self) -> Result<String> {
+    fn get_url(&self) -> Result<String> {
         // get school id and grade
         let config_string = read_to_string("config.json").expect("failed to read config");
         let config: Config = serde_json::from_str(&config_string)?;
@@ -49,6 +49,14 @@ impl LunchClient {
         
         Ok(format!("{URL_BASE}{}&ServingDate={}&ServingLine=Traditional%20Lunch&MealType=Lunch&Grade={}&PersonId=null", config.school_id, date, config.grade))
     }
+    pub fn run(&self) -> Result<()> {
+        let url = self.get_url()?;
+        let menu_options = self.get_lunch(url)?;
+        for option in menu_options.entree {
+            println!("{}", option.menu_item_description);
+        } 
+        Ok(())
+    }
 }
 
 impl FoodApi for LunchClient {
@@ -59,5 +67,25 @@ impl FoodApi for LunchClient {
             .send()?
             .json::<LunchResponse>()?;
         Ok(resp)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    // use crate::client::LunchResponse;
+    #[test]
+    fn get_lunch() {
+        struct ClientMock{}
+        impl FoodApi for ClientMock {
+            fn get_lunch(&self, _url: String) -> Result<LunchResponse> {
+                let data = std::fs::read_to_string("menu_response.json").expect("failed to read test data");
+                let resp: LunchResponse = serde_json::from_str(&data)?;
+                Ok(resp)
+            }
+        }
+        let client = ClientMock {};
+        let resp = client.get_lunch("blah".to_string()).expect("get lunch failed");
+        assert_eq!(resp.entree[0].menu_item_description, "Yogurt Basket with Fresh Baked Blueberry Muffin");
     }
 }
