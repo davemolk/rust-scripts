@@ -1,4 +1,5 @@
 use core::fmt;
+use std::fmt::format;
 
 use serde_derive::Deserialize;
 use anyhow::Result;
@@ -18,18 +19,10 @@ type ApiResponse = Vec<Post>;
 #[derive(Debug, Deserialize)]
 struct Post {
     short_id: String,
-    short_id_url: String,
-    created_at: String,
     title: String,
     url: String,
-    // score: i32,
-    // flags: i32,
     comment_count: u32,
-    description: String,
-    description_plain: String,
     comments_url: String,
-    submitter_user: String,
-    // user_is_author: bool,
     tags: Vec<String>,
 }
 
@@ -39,35 +32,109 @@ impl fmt::Display for Post {
             f,
             "Title: {}\n\
             URL: {}\n\
-            ID: {}\n\
-            Comments URL: {}\n\
             Tags: {:?}\n\
-            ", self.short_id, self.title, self.url, self.comments_url, self.tags
+            ID: {}\n\
+            Num Comments: {}\n\
+            Comments URL: {}\n\
+            ", self.title, self.url, self.tags, self.short_id, self.comment_count, self.comments_url
         )
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct CommentsResponse {
+    comments: Vec<Comment>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Comment {
+    short_id: String,
+    parent_comment: Option<String>,
+    comment_plain: String,
+}
+
 pub struct LobsterClient {
     args: Args,
+    client: reqwest::blocking::Client,
+}
+
+trait LobsterAPI {
+    fn get_lobsters(&self, url: &str) -> Result<ApiResponse>;
+    fn get_comments(&self, url: &str) -> Result<CommentsResponse>;
 }
 
 impl LobsterClient {
     pub fn new(args: Args) -> Self {
-        LobsterClient { args }
+        LobsterClient { 
+            args,
+            client: reqwest::blocking::Client::new(),
+        }
     }
     pub fn run(&self) -> Result<()> {
         let mut url: &str = URL_NEWEST;
         if self.args.hottest {
             url = URL_HOTTEST;
         }
-        let client = reqwest::blocking::Client::new();
-        let resp = client.get(url)
+        let resp = self.get_lobsters(url)?;
+        let mut short_ids = Vec::new();
+        for post in resp {
+            short_ids.push(post.short_id.clone());
+            println!("{post}");
+        }
+        println!("enter an id to see the comments, or press any key to quit");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        if !short_ids.iter().any(|e| input.contains(e)) {
+            return Ok(())
+        }
+        let comment_url = format!("https://lobste.rs/s/{}.json", input);
+        let comments = self.get_comments(&comment_url)?;
+        dbg!(comments);
+        Ok(())
+    }
+    fn get_lobsters(&self, url: &str) -> Result<ApiResponse> {
+        let resp = self.client.get(url)
             .header(reqwest::header::ACCEPT,  "application/json")
             .send()?
             .json::<ApiResponse>()?;
-        for post in resp {
-            println!("{post}");
+        Ok(resp)
+    }
+    fn get_comments(&self, url: &str) -> Result<CommentsResponse> {
+        let resp = self.client.get(url)
+            .header(reqwest::header::ACCEPT,  "application/json")
+            .send()?
+            .json::<CommentsResponse>()?;
+        Ok(resp)
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct ClientMock{}
+        impl LobsterAPI for ClientMock {
+            fn get_lobsters(&self, _url: &str) -> Result<ApiResponse>  {
+                let data = std::fs::read_to_string("newest_response.json").expect("failed to read newest test data");
+                let resp: ApiResponse = serde_json::from_str(&data)?;
+                Ok(resp)
+            }
+            fn get_comments(&self, _url: &str) -> Result<CommentsResponse> {
+                let data = std::fs::read_to_string("comments_response.json").expect("failed to read comments test data");
+                let resp: CommentsResponse = serde_json::from_str(&data)?;
+                Ok(resp)
+            }
         }
-        Ok(())
+    #[test]
+    fn get_lobsters() {
+        let client = ClientMock{};
+        let resp = client.get_lobsters("foo").expect("get lobsters failed");
+        assert_eq!(resp[0].title, "The await event horizon in JavaScript")  
+    }
+    #[test]
+    fn get_comments() {
+        let client = ClientMock{};
+        let resp = client.get_comments("blah").expect("get comments failed");
+        dbg!(resp);
     }
 }
