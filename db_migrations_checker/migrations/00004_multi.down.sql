@@ -1,7 +1,10 @@
 DROP TABLE 
     users_permissions,
     permissions,
-    books;
+    books,
+    a,
+    b,
+    c;
 
 drop type if exists foo cascade;
 

@@ -24,3 +24,15 @@ create table books {
     id serial primary key,
     title text not null
 };
+
+create table a {
+    name text
+};
+
+create table b {
+    name text
+};
+
+create table c {
+    name text
+};

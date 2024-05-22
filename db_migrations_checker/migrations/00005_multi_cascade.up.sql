@@ -9,3 +9,9 @@ create table buzz {
 create table rust {
     crab boolean
 }
+
+drop table if exists
+    a,
+    b,
+    c,
+    cascade;
