@@ -19,20 +19,28 @@ pub struct Args {
 }
 
 fn parse_ndt(arg: &str) -> Result<NaiveDateTime> {
-    let date_v: Vec<&str> = validate_ndt(arg)?;
-    let with_time_added = format!("{}{}{}000000", date_v[2], date_v[0], date_v[1]);
+    let date_v = validate_ndt(arg)?;
+    let with_time_added = format!("{}000000", date_v);
     let ndt = NaiveDateTime::parse_from_str(&with_time_added, "%Y%m%d%H%M%S")?;
     Ok(ndt)
 }
 
-fn validate_ndt(arg: &str) -> Result<Vec<&str>> {
-    let date_v: Vec<&str> = arg.split("/").collect();
-    // todo split each statement and return msg
-    // add 0 if needed
-    if date_v.len() != 3 || date_v[0].len() != 2 || date_v[1].len() != 2 || date_v[2].len() != 4 {
-        return Err(anyhow!("failed to provide a valid date: {:?}", arg));
-    }
-    Ok(date_v)
+fn validate_ndt(arg: &str) -> Result<String> {
+    let date_v: Vec<&str> = arg.split("-").collect();
+    // not comprehensive checking
+    anyhow::ensure!(date_v.len() == 3, "need date as yyyy-dd-mm");
+    
+    anyhow::ensure!(date_v[0].len() == 4, "need a valid year");
+    anyhow::ensure!(date_v[1].len() > 0 && date_v[1].len() < 3, "need a valid day");
+    let day = if date_v[1].len() == 2 { date_v[1].to_string() } else { format!("0{}", date_v[1]) };
+    anyhow::ensure!(date_v[2].len() > 0 && date_v[2].len() < 3, "need a valid month");
+    let month = if date_v[2].len() == 2 { date_v[2].to_string() } else { format!("0{}", date_v[2]) };
+    Ok(format!("{}{}{}", date_v[0].to_string(), day, month))
+}
+
+fn parse_result_to_ndt(date: &str) -> Result<NaiveDateTime> {
+    let ndt = NaiveDateTime::parse_from_str(&date, "%Y%m%d%H%M%S")?;
+    Ok(ndt)
 }
 
 pub struct WaybackClient {
@@ -66,19 +74,7 @@ impl WaybackClient {
             // first vec is always the key, [ "original", "mimetype", "timestamp", "endtimestamp", "groupcount", "uniqcount" ]
             return Err(anyhow!("failed to get any results"));
         }
-        if self.args.verbose {
-            self.print_verbose(resp);
-        } else {
-            for result in resp {
-                // let mut filtering: bool = false;
-                // if let Some(before) = self.args.before {
-                //     println!("from {}", before);
-                // };
-
-                // url is the first result
-                println!("{}", result[0]);
-            }
-        }
+        self.print_results(resp);
         Ok(())
     }
     fn get_all_sitemap(&self, url: String) -> Result<WaybackResponse> {
@@ -87,12 +83,26 @@ impl WaybackClient {
             .json::<WaybackResponse>()?;
         Ok(resp)
     }
-    fn print_verbose(&self, resp: Vec<Vec<String>>) {
-        println!(
-                "{0: <20} | {1: <20} | {2: <6} | {3: <6} | {4: <25} | {5: }",
+    fn print_results(&self, resp: Vec<Vec<String>>) {
+        let mut filter_before = false;
+        if self.args.before.is_some() {
+            filter_before = true
+        }
+        let mut filter_after = false;
+        if self.args.after.is_some() {
+            filter_after = true
+        }
+        if self.args.verbose {
+            println!(
+                "{0: <20} | {1: <20} | {2: <11} | {3: <8} | {4: <25} | {5: }",
                 "From:", "To:", "Duplicates:", "Uniques:", "MIME Type:", "URL:"
             );
-        for entry in resp {
+        }
+        for (i, entry) in resp.iter().enumerate() {
+            // skip the key
+            if i == 0 {
+                continue
+            }
             if entry.len() != 6 {
                 // best effort to print url
                 if entry.len() > 1 {
@@ -100,53 +110,55 @@ impl WaybackClient {
                 } 
                 continue
             }
-            if !self.filter_needed() {
-                let mut from = String::new();
-                if let Ok(f) =  self.parse_to_ndt(&entry[2]) {
-                    from = f.to_string();
-                };
-                let mut to = String::new();
-                if let Ok(t) =  self.parse_to_ndt(&entry[3]) {
-                    to = t.to_string();
-                };
-                if from.len() == 0 || to.len() == 0 {
+            // get result dates and parse
+            let mut from = String::new();
+            if let Ok(f) = parse_result_to_ndt(&entry[2]) {
+                from = f.to_string();
+            };
+            let mut to = String::new();
+            if let Ok(t) = parse_result_to_ndt(&entry[3]) {
+                to = t.to_string();
+            };
+            // if we can't get the dates, we can't filter, so just print
+            if from.len() == 0 || to.len() == 0 {
+                println!("{}", entry[0]);
+                continue
+            }
+            if !filter_before && !filter_after {
+                if self.args.verbose {
+                    self.print_line(from, to, &entry);
+                } else {
                     println!("{}", entry[0]);
-                    continue
                 }
-                println!("{0: <20} | {1: <20} | {2: <6} | {3: <6} | {4: <25} | {5: }", from, to, entry[4], entry[5], entry[1], entry[0]);
             } else {
-                let mut from = String::new();
-                if let Ok(f) =  self.parse_to_ndt(&entry[2]) {
-                    from = f.to_string();
-                };
-                let mut to = String::new();
-                if let Ok(t) =  self.parse_to_ndt(&entry[3]) {
-                    to = t.to_string();
-                };
-                if from.len() == 0 || to.len() == 0 {
-                    println!("{}", entry[0]);
-                    continue
-                }
-                if let Some(before) = self.args.before {
-                    if before - self.parse_to_ndt(&entry[2]).unwrap() > chrono::TimeDelta::new(0, 0).unwrap() {
-                        println!("{0: <20} | {1: <20} | {2: <6} | {3: <6} | {4: <25} | {5: }", from, to, entry[4], entry[5], entry[1], entry[0]);
-                    } else {
-                        continue
-                    }
+                if filter_before && filter_after && self.is_before(&entry[2]) && self.is_after(&entry[3]) {
+                    self.print_line(from, to, &entry);
+                } else if filter_before && self.is_before(&entry[2]) {
+                    self.print_line(from, to, &entry);
+                } else if filter_after && self.is_after(&entry[3]) {
+                    self.print_line(from, to, &entry);
                 }
             }
-            
         }
     }
-    fn filter_needed(&self) -> bool {
-        match self.args.before {
-            Some(_) => return true,
-            None => return false,
+    fn print_line(&self, from: String, to: String, line: &Vec<String>) {
+        if self.args.verbose {
+            println!("{0: <20} | {1: <20} | {2: <11} | {3: <8} | {4: <25} | {5: }", from, to, line[4], line[5], line[1], line[0]);
+        } else {
+            println!("{}", line[0]);
         }
     }
-    fn parse_to_ndt(&self, date: &str) -> Result<NaiveDateTime> {
-        let ndt = NaiveDateTime::parse_from_str(&date, "%Y%m%d%H%M%S")?;
-        Ok(ndt)
+    fn is_before(&self, date: &str) -> bool {
+        if self.args.before.unwrap() - parse_result_to_ndt(date).unwrap() > chrono::TimeDelta::new(0, 0).unwrap() {
+            return true;
+        }
+        false
+    }
+    fn is_after(&self, date: &str) -> bool {
+        if parse_result_to_ndt(date).unwrap() - self.args.after.unwrap() > chrono::TimeDelta::new(0, 0).unwrap() {
+            return true;
+        }
+        false
     }
 }
 
@@ -173,7 +185,7 @@ mod tests {
     }
     #[test]
     fn test_parse_ndt() {
-        let ndt = parse_ndt("10/31/2020").expect("want valid date");
+        let ndt = parse_ndt("2020-10-31").expect("want valid date");
         let expect_ndt = NaiveDate::from_ymd_opt(2020, 10, 31).unwrap().and_hms_opt(0, 0, 0).unwrap();
         assert_eq!(ndt, expect_ndt);
     }
@@ -181,5 +193,11 @@ mod tests {
     #[should_panic]
     fn test_parse_ndt_fail() {
         _ = parse_ndt("10/31/200").expect("want valid date");
+    }
+    #[test]
+    fn test_parse_result_to_ndt() {
+        let got = parse_result_to_ndt("20240228105514").expect("want valid");
+        let expect = NaiveDate::from_ymd_opt(2024, 02, 28).unwrap().and_hms_opt(10, 55, 14).unwrap();
+        assert_eq!(got, expect);
     }
 }
