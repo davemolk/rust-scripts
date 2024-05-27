@@ -27,9 +27,8 @@ fn parse_ndt(arg: &str) -> Result<NaiveDateTime> {
 
 fn validate_ndt(arg: &str) -> Result<String> {
     let date_v: Vec<&str> = arg.split("-").collect();
-    // not comprehensive checking
+    // not comprehensive checking, but fine for this project
     anyhow::ensure!(date_v.len() == 3, "need date as yyyy-dd-mm");
-    
     anyhow::ensure!(date_v[0].len() == 4, "need a valid year");
     anyhow::ensure!(date_v[1].len() > 0 && date_v[1].len() < 3, "need a valid day");
     let day = if date_v[1].len() == 2 { date_v[1].to_string() } else { format!("0{}", date_v[1]) };
@@ -84,14 +83,8 @@ impl WaybackClient {
         Ok(resp)
     }
     fn print_results(&self, resp: Vec<Vec<String>>) {
-        let mut filter_before = false;
-        if self.args.before.is_some() {
-            filter_before = true
-        }
-        let mut filter_after = false;
-        if self.args.after.is_some() {
-            filter_after = true
-        }
+        let filter_before = if self.args.before.is_some() { true } else { false };
+        let filter_after = if self.args.after.is_some() { true } else { false };
         if self.args.verbose {
             println!(
                 "{0: <20} | {1: <20} | {2: <11} | {3: <8} | {4: <25} | {5: }",
@@ -119,11 +112,12 @@ impl WaybackClient {
             if let Ok(t) = parse_result_to_ndt(&entry[3]) {
                 to = t.to_string();
             };
-            // if we can't get the dates, we can't filter, so just print
+            // if we can't get the dates, we can't filter, so just print the url
             if from.len() == 0 || to.len() == 0 {
                 println!("{}", entry[0]);
                 continue
             }
+            // not filtering
             if !filter_before && !filter_after {
                 if self.args.verbose {
                     self.print_line(from, to, &entry);
@@ -131,6 +125,7 @@ impl WaybackClient {
                     println!("{}", entry[0]);
                 }
             } else {
+                // check filter cases
                 if filter_before && filter_after && self.is_before(&entry[2]) && self.is_after(&entry[3]) {
                     self.print_line(from, to, &entry);
                 } else if filter_before && self.is_before(&entry[2]) {
@@ -149,16 +144,10 @@ impl WaybackClient {
         }
     }
     fn is_before(&self, date: &str) -> bool {
-        if self.args.before.unwrap() - parse_result_to_ndt(date).unwrap() > chrono::TimeDelta::new(0, 0).unwrap() {
-            return true;
-        }
-        false
+        self.args.before.unwrap() - parse_result_to_ndt(date).unwrap() > chrono::TimeDelta::new(0, 0).unwrap()
     }
     fn is_after(&self, date: &str) -> bool {
-        if parse_result_to_ndt(date).unwrap() - self.args.after.unwrap() > chrono::TimeDelta::new(0, 0).unwrap() {
-            return true;
-        }
-        false
+        parse_result_to_ndt(date).unwrap() - self.args.after.unwrap() > chrono::TimeDelta::new(0, 0).unwrap()
     }
 }
 

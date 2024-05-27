@@ -160,7 +160,7 @@ mod tests {
     fn get_comments() {
         let client = ClientMock{};
         let resp = client.get_comments("blah").expect("get comments failed");
-        dbg!(resp);
-        // todo assert
+        assert_eq!(resp.title, "Lila: a Lil Interpreter in Awk");
+        assert_eq!(resp.comments.len(), 8);
     }
 }

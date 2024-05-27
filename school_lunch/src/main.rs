@@ -1,10 +1,10 @@
 mod client;
-
 use crate::client::LunchClient;
-use anyhow::Result;
 
-fn main() -> Result<()> {
+fn main() {
     let client = LunchClient::new();
-    client.run()?;
-    Ok(())
+    if let Err(e) = client.run() {
+        eprintln!("{}", e);
+        std::process::exit(1)
+    }
 }
