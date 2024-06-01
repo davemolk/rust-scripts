@@ -1,5 +1,13 @@
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use std::io::{self, Write};
+use std::fs::OpenOptions;
+use std::fs;
+
+const USAGE: &str = r"Usage:
+kv list — list all key-value pairs in db
+kv get <key> — get the value for given key
+kv set <key> <value> — set a value for a given key
+";
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -14,7 +22,7 @@ fn main() {
 
 trait Storage {
     fn set(&self, key: &str, value: &str) -> Result<()>;
-    fn get(&self, key: &str) -> Result<String>;
+    fn get(&self, key: &str) -> Result<Option<String>>;
 }
 
 struct Runner<T: Storage> {
@@ -27,22 +35,28 @@ impl<T: Storage> Runner<T> {
     }
     fn run(&self, output: &mut dyn Write, args: Vec<String>) -> Result<()> {
         if args.len() < 3 {
-            return Err(anyhow!("not enough args"))
+            eprintln!("{USAGE}");
+            return Err(anyhow!("not enough args to run"))
         }
         match args[1].as_str() {
             "set" => {
                 if args.len() < 4 {
-                    return Err(anyhow!("make a usage thing"))
+                    eprintln!("{USAGE}");
+                    return Err(anyhow!("not enough args for set"))
                 }
                 self.database.set(&args[2], &args[3])?;
-                return Ok(())
             },
             "get" => {
-                let v = self.database.get(&args[2])?;
-                writeln!(output, "{}", v)?;
-                return Ok(())
+                if let Some(v) = self.database.get(&args[2])? {
+                    writeln!(output, "{}", v)?;
+                } else {
+                    return Err(anyhow!("not found"));
+                }
             },
-            _ => return Err(anyhow!("make a usage thing")),
+            _ => {
+                eprintln!("{USAGE}");
+                return Err(anyhow!("command not recognized"))
+            }
         }
         Ok(())
     }
@@ -60,17 +74,122 @@ impl FileDatabase {
 
 impl Storage for FileDatabase {
     fn set(&self, key: &str, value: &str) -> Result<()> {
-        println!("you called set");
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&self.file)
+            .context("failed to open file")?;
+        writeln!(&mut file, "{}:{}", key, value)
+            .context("failed to write to file")?;
         Ok(())
     }
-    fn get(&self, key: &str) -> Result<String> {
-        println!("you called get");
-        Ok("foo".to_string())
+    fn get(&self, key: &str) -> Result<Option<String>> {
+        let contents = fs::read_to_string(&self.file)
+            .context("failed to read file")?;
+        let mut last = String::new();
+        for line in contents.lines() {
+            let parts: Vec<&str> = line.split(":").collect();
+            if parts.len() < 2 {
+                continue
+            }
+            if parts[0] == key {
+                last = parts[1].to_string();
+            }
+        }
+        if last.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(last))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    struct MockDatabase {
+        set_err: Option<String>,
+        get_err: Option<String>,
+        get_value: Option<String>,
+    }
+    impl MockDatabase {
+        fn new(set_err: Option<String>, get_err: Option<String>, get_value: Option<String>) -> Self {
+            MockDatabase {
+                set_err,
+                get_err,
+                get_value,
+            }
+        }
+    }
+    impl Storage for MockDatabase {
+        fn set(&self, _key: &str, _value: &str) -> Result<()> {
+            if let Some(err) = &self.set_err {
+                let return_err = String::from(err);
+                return Err(anyhow!(return_err));
+            }
+            Ok(())
+        }
+    
+        fn get(&self, _key: &str) -> Result<Option<String>> {
+            if let Some(err) = &self.get_err {
+                let return_err = String::from(err);
+                return Err(anyhow!(return_err));
+            }
+            Ok(self.get_value.clone())
+        }
+    }
+    #[test]
+    fn test_runner_args_err() {
+        let runner = Runner::new(MockDatabase::new(None, None, None));
+        let args = vec![];
+        let mut output = Vec::<u8>::new();
+        assert!(runner.run(&mut output, args).is_err());
+    }
+    #[test]
+    fn test_runner_usage_err() {
+        let runner = Runner::new(MockDatabase::new(None, None, None));
+        let args = vec!["./kv".to_string(), "help".to_string(), "123".to_string()];
+        let mut output = Vec::<u8>::new();
+        assert!(runner.run(&mut output, args).is_err());
+    }
+    #[test]
+    fn test_runner_set_missing_arg_err() {
+        let runner = Runner::new(MockDatabase::new(None, None, None));
+        let args = vec!["./kv".to_string(), "set".to_string(), "123".to_string()];
+        let mut output = Vec::<u8>::new();
+        assert!(runner.run(&mut output, args).is_err());
+    }
+    #[test]
+    fn test_runner_returns_err_on_set() {
+        let set_err = String::from("set err");
+        let runner = Runner::new(MockDatabase::new(Some(set_err), None, None));
+        let args = vec!["./kv".to_string(), "set".to_string(), "bob".to_string(), "123".to_string()];
+        let mut output = Vec::<u8>::new();
+        assert!(runner.run(&mut output, args).is_err());
+        let want = anyhow::Error::msg("set err");
+        let args = vec!["./kv".to_string(), "set".to_string(), "bob".to_string(), "123".to_string()];
+        let got = runner.run(&mut output, args).unwrap_err();
+        assert_eq!(want.to_string(), got.to_string());
+    }
+    #[test]
+    fn test_runner_returns_err_on_get() {
+        let get_err = String::from("get err");
+        let get_value = String::from("get value");
+        let runner = Runner::new(MockDatabase::new(None, Some(get_err), Some(get_value)));
+        let args = vec!["./kv".to_string(), "get".to_string(), "bob".to_string(), "123".to_string()];
+        let mut output = Vec::<u8>::new();
+        assert!(runner.run(&mut output, args).is_err());
+        let want = anyhow::Error::msg("get err");
+        let args = vec!["./kv".to_string(), "get".to_string(), "bob".to_string(), "123".to_string()];
+        let got = runner.run(&mut output, args).unwrap_err();
+        assert_eq!(want.to_string(), got.to_string());
+    }
+    #[test]
+    fn test_runner_get_returns_expected_value() {
+        let runner = Runner::new(MockDatabase::new(None, None, Some("get value".to_string())));
+        let args = vec!["./kv".to_string(), "get".to_string(), "bob".to_string()];
+        let mut output = Vec::<u8>::new();
+        assert!(runner.run(&mut output, args).is_ok());
+        let got = String::from_utf8_lossy(&output);
+        assert_eq!(got, "get value\n".to_string());
+    }
 }
