@@ -4,7 +4,6 @@ use std::fs::OpenOptions;
 use std::fs;
 
 const USAGE: &str = r"Usage:
-kv list — list all key-value pairs in db
 kv get <key> — get the value for given key
 kv set <key> <value> — set a value for a given key
 ";
@@ -22,7 +21,7 @@ fn main() {
 
 trait Storage {
     fn set(&self, key: &str, value: &str) -> Result<()>;
-    fn get(&self, key: &str) -> Result<Option<String>>;
+    fn get(&self, key: &str) -> Result<String>;
 }
 
 struct Runner<T: Storage> {
@@ -47,10 +46,9 @@ impl<T: Storage> Runner<T> {
                 self.database.set(&args[2], &args[3])?;
             },
             "get" => {
-                if let Some(v) = self.database.get(&args[2])? {
-                    writeln!(output, "{}", v)?;
-                } else {
-                    return Err(anyhow!("not found"));
+                match self.database.get(&args[2]) {
+                    Err(e) => return Err(e),
+                    Ok(v) => writeln!(output, "{}", v)?,
                 }
             },
             _ => {
@@ -83,7 +81,7 @@ impl Storage for FileDatabase {
             .context("failed to write to file")?;
         Ok(())
     }
-    fn get(&self, key: &str) -> Result<Option<String>> {
+    fn get(&self, key: &str) -> Result<String> {
         let contents = fs::read_to_string(&self.file)
             .context("failed to read file")?;
         let mut last = String::new();
@@ -97,9 +95,9 @@ impl Storage for FileDatabase {
             }
         }
         if last.is_empty() {
-            return Ok(None);
+            return Err(anyhow!("not found"));
         }
-        Ok(Some(last))
+        Ok(last)
     }
 }
 
@@ -109,10 +107,10 @@ mod tests {
     struct MockDatabase {
         set_err: Option<String>,
         get_err: Option<String>,
-        get_value: Option<String>,
+        get_value: String,
     }
     impl MockDatabase {
-        fn new(set_err: Option<String>, get_err: Option<String>, get_value: Option<String>) -> Self {
+        fn new(set_err: Option<String>, get_err: Option<String>, get_value: String) -> Self {
             MockDatabase {
                 set_err,
                 get_err,
@@ -129,31 +127,32 @@ mod tests {
             Ok(())
         }
     
-        fn get(&self, _key: &str) -> Result<Option<String>> {
+        fn get(&self, _key: &str) -> Result<String> {
             if let Some(err) = &self.get_err {
                 let return_err = String::from(err);
                 return Err(anyhow!(return_err));
             }
-            Ok(self.get_value.clone())
+            let out = String::from(self.get_value.clone());
+            Ok(out)
         }
     }
     #[test]
     fn test_runner_args_err() {
-        let runner = Runner::new(MockDatabase::new(None, None, None));
+        let runner = Runner::new(MockDatabase::new(None, None, String::new()));
         let args = vec![];
         let mut output = Vec::<u8>::new();
         assert!(runner.run(&mut output, args).is_err());
     }
     #[test]
     fn test_runner_usage_err() {
-        let runner = Runner::new(MockDatabase::new(None, None, None));
+        let runner = Runner::new(MockDatabase::new(None, None, String::new()));
         let args = vec!["./kv".to_string(), "help".to_string(), "123".to_string()];
         let mut output = Vec::<u8>::new();
         assert!(runner.run(&mut output, args).is_err());
     }
     #[test]
     fn test_runner_set_missing_arg_err() {
-        let runner = Runner::new(MockDatabase::new(None, None, None));
+        let runner = Runner::new(MockDatabase::new(None, None, String::new()));
         let args = vec!["./kv".to_string(), "set".to_string(), "123".to_string()];
         let mut output = Vec::<u8>::new();
         assert!(runner.run(&mut output, args).is_err());
@@ -161,7 +160,7 @@ mod tests {
     #[test]
     fn test_runner_returns_err_on_set() {
         let set_err = String::from("set err");
-        let runner = Runner::new(MockDatabase::new(Some(set_err), None, None));
+        let runner = Runner::new(MockDatabase::new(Some(set_err), None, String::new()));
         let args = vec!["./kv".to_string(), "set".to_string(), "bob".to_string(), "123".to_string()];
         let mut output = Vec::<u8>::new();
         assert!(runner.run(&mut output, args).is_err());
@@ -174,7 +173,7 @@ mod tests {
     fn test_runner_returns_err_on_get() {
         let get_err = String::from("get err");
         let get_value = String::from("get value");
-        let runner = Runner::new(MockDatabase::new(None, Some(get_err), Some(get_value)));
+        let runner = Runner::new(MockDatabase::new(None, Some(get_err), get_value));
         let args = vec!["./kv".to_string(), "get".to_string(), "bob".to_string(), "123".to_string()];
         let mut output = Vec::<u8>::new();
         assert!(runner.run(&mut output, args).is_err());
@@ -185,7 +184,7 @@ mod tests {
     }
     #[test]
     fn test_runner_get_returns_expected_value() {
-        let runner = Runner::new(MockDatabase::new(None, None, Some("get value".to_string())));
+        let runner = Runner::new(MockDatabase::new(None, None, "get value".to_string()));
         let args = vec!["./kv".to_string(), "get".to_string(), "bob".to_string()];
         let mut output = Vec::<u8>::new();
         assert!(runner.run(&mut output, args).is_ok());
