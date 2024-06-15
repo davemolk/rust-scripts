@@ -12,7 +12,7 @@ fn main() {
         Ok(f) => f,
     };
     let mut runner = Runner::new(file_database);
-    if let Err(e) = runner.run(&mut io::stdout(), env::args().collect()) {
+    if let Err(e) = runner.run(&mut io::stdout(), env::args().skip(1).collect()) {
         eprintln!("{}", e);
         std::process::exit(1)
     }
