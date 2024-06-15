@@ -10,8 +10,8 @@ kvs get    <key>                            get the value for given key
 kvs set    <key>    <value>                 set a value for a given key, overwrites any existing value(s)
 kvs setk   ...<key> <value>                 set a value to multiple keys, appending in each case
 kvs setv   <key>    <value>                 append a new value to the given key
-kvs upd    <key>    <new_key>               update a key name
-kvs upd    <key>    <value>    <new_value>
+kvs update <key>    <new_key>               update a key name
+kvs update <key>    <value>    <new_value>
 kvs remove <key>    <value>                 removes a value from a key
 kvs delete <key>                            deletes a key and its value(s)
 kvs undo                                    roll back the last set/setv/delete operation
@@ -66,7 +66,7 @@ impl Runner {
                 }
                 self.database.set_multiple_values(&args[1], &args[2])?;
             }
-            "upd" => {
+            "update" => {
                 if args.len() < 3 {
                     eprintln!("{USAGE}");
                     return Err(anyhow!("not enough args to update key name"))
@@ -74,7 +74,7 @@ impl Runner {
                 if args.len() == 3 {
                     self.database.update_key(&args[1], &args[2])?;
                 } else {
-                    // self.database.update_value(&args[1], &args[2], args[3])
+                    self.database.update_value(&args[1], &args[2], &args[3])?;
                 }
                 
             }
@@ -247,6 +247,25 @@ impl FileDatabase {
         self.save_to_db()?;
         Ok(())
     }
+    fn update_value(&mut self, key: &str, value: &str, new_value: &str) -> Result<()> {
+        self.save_to_tmp(key)?;
+        if !self.data.contains_key(key) {
+            return Err(anyhow!("key not found"));
+        }
+        if let Some(values) = self.data.get_mut(key) {
+            if !values.contains(&value.to_owned()) {
+                return Err(anyhow!("value not found"));
+            }
+            for element in values.iter_mut() {
+                if *element == value.to_owned() {
+                    *element = new_value.to_owned();
+                    break
+                }
+            }
+        }
+        self.save_to_db()?;
+        Ok(())
+    }
     fn duplicate(&mut self, key: &str, new_key: &str) -> Result<()> {
         // save so we can run "undo"
         self.save_to_tmp(key)?;
@@ -351,6 +370,7 @@ impl FileDatabase {
     }
 }
 
+// tests are not safe to run in parallel
 #[cfg(test)]
 mod tests {
     use std::io::Read;
@@ -378,7 +398,7 @@ mod tests {
             }
             match fs::remove_file(&self.file_database.file) {
                 Err(e) if e.kind() == ErrorKind::NotFound => {},
-                Err(_e) => panic!("error deleting tmp"),
+                Err(_e) => panic!("error deleting test db"),
                 Ok(_) => {},
             }
             Ok(())
@@ -534,6 +554,19 @@ mod tests {
         let want = anyhow::Error::msg("not found");
         let got = d.file_database.get(key1).unwrap_err();
         assert_eq!(got.to_string(), want.to_string());
+        d.cleanup().unwrap();
+    }
+    #[test]
+    fn update_value() {
+        let mut d = TestDB::new();
+        let key = "key";
+        let value1 = "value1".to_string();
+        let value2 = "value2".to_string();
+        d.file_database.set(key, &value1).unwrap();
+        d.file_database.update_value(key, &value1, &value2).unwrap();
+        let updated_value = d.file_database.get(key).unwrap();
+        assert_eq!(*updated_value[0], value2);
+        assert_eq!(updated_value.len(), 1);
         d.cleanup().unwrap();
     }
     #[test]
