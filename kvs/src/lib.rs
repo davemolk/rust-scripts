@@ -1,23 +1,38 @@
+use thiserror::Error;
 use anyhow::{Result, anyhow};
 use serde_derive::{Deserialize, Serialize};
-use std::fs;
+use std::fs::{self};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, ErrorKind, Write};
+use std::io::{self, BufRead, BufReader, ErrorKind, Write};
 
 pub const USAGE: &str = r"Usage:
-kvs list                                    list all keys in db
-kvs get    <key>                            get the value for given key
-kvs set    <key>    <value>                 set a value for a given key, overwrites any existing value(s)
-kvs setk   ...<key> <value>                 set a value to multiple keys, appending in each case
-kvs setv   <key>    <value>                 append a new value to the given key
-kvs update <key>    <new_key>               update a key name
-kvs update <key>    <value>    <new_value>
-kvs remove <key>    <value>                 removes a value from a key
-kvs delete <key>                            deletes a key and its value(s)
-kvs undo                                    roll back the last set/setv/delete operation
-kvs backup <new_file_name>                  makes a copy of the current db file
-kvs help                                    prints usage
+kvs list                                       list all keys in db
+kvs get       <key>                            get the value for given key
+kvs set       <key>    <value>                 set a value for a given key, overwrites any existing value(s)
+kvs setk      ...<key> <value>                 set a value to multiple keys, appending in each case
+kvs setv      <key>    <value>                 append a new value to the given key
+kvs update    <key>    <new_key>               update a key name
+kvs update    <key>    <value>    <new_value>  update a value for a key
+kvs duplicate <key>    <new_key>               copy a key's values to a new key (old key and value remain unchanged)
+kvs remove    <key>    <value>                 removes a value from a key
+kvs delete    <key>                            deletes a key and its value(s)
+kvs backup    <new_file_name>                  makes a copy of the current db file
+kvs undo                                       undo the last operation (supported for set, setk, setv, update, duplicate, remove, and delete)
+
+kvs help                                       prints usage
 ";
+
+#[derive(Error, Debug)]
+enum FileDatabaseError {
+    #[error("key not found")]
+    KeyNotFound,
+    #[error("value not found")]
+    ValueNotFound,
+    #[error("write to tmp failed")]
+    WriteToTmp(#[from] io::Error),
+    #[error("failed to save to db: `{0}`")]
+    DB(String),
+}
 
 pub struct Runner {
     database: FileDatabase,
@@ -32,7 +47,7 @@ impl Runner {
             eprintln!("{USAGE}");
             return Err(anyhow!("not enough args to run"))
         }
-        match args[0].as_str() {
+        match args[0].to_lowercase().as_str() {
             "list" => {
                 let keys = self.database.list();
                 if keys.is_empty() {
@@ -43,6 +58,20 @@ impl Runner {
                     }
                 }
             }
+            "get" => {
+                if args.len() < 2 {
+                    eprintln!("{USAGE}");
+                    return Err(anyhow!("not enough args for get"))
+                }
+                match self.database.get(&args[1]) {
+                    Err(e) => return Err(e.into()),
+                    Ok(v) => {
+                        for s in v {
+                            writeln!(output, "{}", s)?
+                        }
+                    },
+                }
+            },
             "set" => {
                 if args.len() < 3 {
                     eprintln!("{USAGE}");
@@ -85,20 +114,15 @@ impl Runner {
                 }
                 self.database.duplicate(&args[1], &args[2])?;
             }
-            "get" => {
-                if args.len() < 2 {
+            "remove" => {
+                if args.len() < 3 {
                     eprintln!("{USAGE}");
-                    return Err(anyhow!("not enough args for get"))
+                    return Err(anyhow!("not enough args for remove command"))
                 }
-                match self.database.get(&args[1]) {
-                    Err(e) => return Err(e),
-                    Ok(v) => {
-                        for s in v {
-                            writeln!(output, "{}", s)?
-                        }
-                    },
-                }
-            },
+                if let Err(e) = self.database.remove(&args[1], &args[2]) {
+                    return Err(e.into());
+                };
+            }
             "delete" => {
                 if args.len() < 2 {
                     eprintln!("{USAGE}");
@@ -108,26 +132,17 @@ impl Runner {
                     return Err(e);
                 };
             }
-            "remove" => {
-                if args.len() < 3 {
-                    eprintln!("{USAGE}");
-                    return Err(anyhow!("not enough args for remove command"))
-                }
-                if let Err(e) = self.database.remove(&args[1], &args[2]) {
-                    return Err(e);
-                };
-            }
-            "undo" => {
-                if let Err(e) = self.database.undo() {
-                    return Err(e);
-                }
-            }
             "backup" => {
                 if args.len() < 2 {
                     eprintln!("{USAGE}");
                     return Err(anyhow!("not enough args for backup command"))
                 }
                 if let Err(e) = self.database.backup(&args[1]) {
+                    return Err(e);
+                }
+            }
+            "undo" => {
+                if let Err(e) = self.database.undo() {
                     return Err(e);
                 }
             }
@@ -151,6 +166,7 @@ pub struct FileDatabase {
 }
 
 impl FileDatabase {
+    /// basic db operations
     pub fn connect(file: String) -> Result<Self> {
         match fs::File::open(&file) {
             Ok(f) => {
@@ -171,30 +187,44 @@ impl FileDatabase {
             Err(_e) => return Err(anyhow!("unable to connect to db")),
         }
     }
-    fn save_to_db(&self) -> Result<()> {
+    fn save_to_db(&self) -> Result<(), FileDatabaseError> {
         // we know the file exists because we create it if it doesn't
         // during connect
         let file = fs::File::create(&self.file)?;
-        serde_json::to_writer_pretty(file,&self.data)?;
+        match serde_json::to_writer_pretty(file,&self.data) {
+            Err(e) => return Err(FileDatabaseError::DB(e.to_string())),
+            Ok(_) => {},
+        }
         Ok(())
     }
-    fn is_file_empty(file: &str) -> Result<bool> {
-        let metadata = fs::metadata(file)?;
-        Ok(metadata.len() == 0)
-    }
-    fn get_tmp_name(&self) -> String {
-        format!("{}.tmp", &self.file)
-    }
-    fn save_to_tmp(&self, key: &str) -> Result<()> {
+    /// saving/deleting data
+    fn save_to_tmp(&self, key: &str) -> Result<(), FileDatabaseError> {
         let tmp_name = self.get_tmp_name();
         match fs::File::create(&tmp_name) {
             Err(e) => {
-                return Err(anyhow!("failed to write to tmp file {}", e));
+                return Err(FileDatabaseError::WriteToTmp(e));
             },
             Ok(mut f) => {
                 if let Some(value) = self.data.get(key) {
                     for v in value {
                         f.write(format!("{}:::{}\n", key, *v).as_bytes())?;
+                    }
+                };
+            },
+        }
+        Ok(())
+    }
+    fn save_to_tmp_during_key_update(&self, key: &str, new_key: &str) -> Result<(), FileDatabaseError> {
+        let tmp_name = self.get_tmp_name();
+        match fs::File::create(&tmp_name) {
+            Err(e) => {
+                return Err(FileDatabaseError::WriteToTmp(e));
+            },
+            Ok(mut f) => {
+                if let Some(value) = self.data.get(key) {
+                    for v in value {
+                        // track old and new key
+                        f.write(format!("{}:::{}:::{}\n", key, new_key, *v).as_bytes())?;
                     }
                 };
             },
@@ -219,6 +249,22 @@ impl FileDatabase {
         self.save_to_db()?;
         Ok(())
     }
+    /// crud-like
+    fn list(&self) -> Vec<&String> {
+        let mut keys = Vec::from_iter(self.data.keys());
+        keys.sort();
+        keys
+    }
+    fn get(&self, key: &str) -> Result<Vec<&String>, FileDatabaseError> {
+        match self.data.get(key) {
+            Some(v) => {
+                let mut values = Vec::from_iter(v);
+                values.sort();
+                return Ok(values);
+            },
+            None => return Err(FileDatabaseError::ValueNotFound),
+        }
+    }
     fn set(&mut self, key: &str, value: &str) -> Result<()> {
         // save so we can run "undo"
         self.save_to_tmp(key)?;
@@ -227,34 +273,42 @@ impl FileDatabase {
         self.save_to_db()?;
         Ok(())
     }
+    fn set_multiple_keys(&mut self, args: &[&str]) -> Result<()> {
+        if let Some(value) = args.last() {
+            for key in &args[..args.len() - 1] {
+                self.set_multiple_values(key, value)?;
+            }
+        };
+        Ok(())
+    }
     fn set_multiple_values(&mut self, key: &str, value: &str) -> Result<()> {
         // save so we can run "undo"
         self.save_to_tmp(key)?;
         self.restore(key, value)?;
         Ok(())
     }
-    fn update_key(&mut self, key: &str, updated_key: &str) -> Result<()> {
-        // TODO will need to delete new key on undo, might need a new mechanism for this...
-        self.save_to_tmp(key)?;
+    fn update_key(&mut self, key: &str, updated_key: &str) -> Result<(), FileDatabaseError> {
         if !self.data.contains_key(key) {
-            return Err(anyhow!("key not found"));
+            return Err(FileDatabaseError::KeyNotFound);
         }
         // get values from key and insert in new key
         let values = self.get(key)?;
         self.data.insert(updated_key.to_owned(), Self::values_to_insert(values));
-        // remove old key
-        self.delete(key)?;
+        // we need a new mechanism for handling undo so we can track both the old
+        // key and the new one.
+        self.save_to_tmp_during_key_update(key, updated_key)?;
+        let _ = self.data.remove(key);
         self.save_to_db()?;
         Ok(())
     }
-    fn update_value(&mut self, key: &str, value: &str, new_value: &str) -> Result<()> {
+    fn update_value(&mut self, key: &str, value: &str, new_value: &str) -> Result<(), FileDatabaseError> {
         self.save_to_tmp(key)?;
         if !self.data.contains_key(key) {
-            return Err(anyhow!("key not found"));
+            return Err(FileDatabaseError::KeyNotFound);
         }
         if let Some(values) = self.data.get_mut(key) {
             if !values.contains(&value.to_owned()) {
-                return Err(anyhow!("value not found"));
+                return Err(FileDatabaseError::ValueNotFound);
             }
             for element in values.iter_mut() {
                 if *element == value.to_owned() {
@@ -278,27 +332,7 @@ impl FileDatabase {
         self.save_to_db()?;
         Ok(())
     }
-    fn values_to_insert(from_db: Vec<&String>) -> Vec<String> {
-        from_db.iter().cloned().map(|e| e.to_owned()).collect()
-    }
-    fn get(&self, key: &str) -> Result<Vec<&String>> {
-        match self.data.get(key) {
-            Some(v) => {
-                let mut values = Vec::from_iter(v);
-                values.sort();
-                return Ok(values);
-            },
-            None => return Err(anyhow!("not found")),
-        }
-    }
-    fn delete(&mut self, key:&str) -> Result<()> {
-        // save so we can run "undo"
-        self.save_to_tmp(key)?;
-        let _ = self.data.remove(key);
-        self.save_to_db()?;
-        Ok(())
-    }
-    fn remove(&mut self, key: &str, value: &str) -> Result<()> {
+    fn remove(&mut self, key: &str, value: &str) -> Result<(), FileDatabaseError> {
         // save so we can run "undo"
         self.save_to_tmp(key)?;
         if let Some(values ) = self.data.get_mut(key) {
@@ -311,26 +345,15 @@ impl FileDatabase {
             // don't need file anymore
             let tmp_name = self.get_tmp_name();
             fs::remove_file(&tmp_name)?;
-            return Err(anyhow!("key not found"));
+            return Err(FileDatabaseError::KeyNotFound);
         }
         Ok(())
     }
-    fn list(&self) -> Vec<&String> {
-        let mut keys = Vec::from_iter(self.data.keys());
-        keys.sort();
-        keys
-    }
-    fn set_multiple_keys(&mut self, args: &[&str]) -> Result<()> {
-        if let Some(value) = args.last() {
-            for key in &args[..args.len() - 1] {
-                self.set_multiple_values(key, value)?;
-            }
-        };
-        Ok(())
-    }
-    fn backup(&self, file_name: &str) -> Result<()> {
-        let _ = fs::File::create_new(file_name)?;
-        std::fs::copy(self.file.as_str(), file_name)?;
+    fn delete(&mut self, key:&str) -> Result<()> {
+        // save so we can run "undo"
+        self.save_to_tmp(key)?;
+        let _ = self.data.remove(key);
+        self.save_to_db()?;
         Ok(())
     }
     fn undo(&mut self) -> Result<()> {
@@ -356,21 +379,50 @@ impl FileDatabase {
         for (i, line) in reader.lines().enumerate() {
             let line = line?;
             let parts: Vec<&str> = line.split(":::").collect();
-            if parts.len() != 2 {
+            // check if we are undoing a key update, in which case we have 3 parts
+            let key_for_delete: String;
+            let key_for_restore: String;
+            let value_for_restore: String;
+            if parts.len() == 3 {
+                key_for_delete = parts[1].to_string();
+                key_for_restore = parts[0].to_string();
+                value_for_restore = parts[2].to_string();
+            } else if parts.len() == 2 {
+                key_for_delete = parts[0].to_string();
+                key_for_restore = parts[0].to_string();
+                value_for_restore = parts[1].to_string();
+            } else {
                 continue
             }
             // clear the entry so we can restore it from scratch
             if i == 0 {
-                self.delete_key_with_no_backup(parts[0])?;
+                // delete updated key
+                self.delete_key_with_no_backup(&key_for_delete)?;
             }
-            self.restore(parts[0], parts[1])?;
+            self.restore(&key_for_restore, &value_for_restore)?;
         }
         fs::remove_file(&tmp_name)?;
         Ok(())
     }
+    fn backup(&self, file_name: &str) -> Result<()> {
+        let _ = fs::File::create_new(file_name)?;
+        std::fs::copy(self.file.as_str(), file_name)?;
+        Ok(())
+    }
+    /// helpers
+    fn values_to_insert(from_db: Vec<&String>) -> Vec<String> {
+        from_db.iter().cloned().map(|e| e.to_owned()).collect()
+    }
+    fn is_file_empty(file: &str) -> Result<bool> {
+        let metadata = fs::metadata(file)?;
+        Ok(metadata.len() == 0)
+    }
+    fn get_tmp_name(&self) -> String {
+        format!("{}.tmp", &self.file)
+    }    
 }
 
-// tests are not safe to run in parallel
+// note: tests are not safe to run in parallel
 #[cfg(test)]
 mod tests {
     use std::io::Read;
@@ -551,9 +603,15 @@ mod tests {
         assert_eq!(*value_at_upd_key[0], value);
         // make sure old key no longer exists
         assert!(d.file_database.get(key1).is_err());
-        let want = anyhow::Error::msg("not found");
-        let got = d.file_database.get(key1).unwrap_err();
-        assert_eq!(got.to_string(), want.to_string());
+        let got = d.file_database.get(key1);
+        match got {
+            Err(FileDatabaseError::ValueNotFound) => assert!(true),
+            _ => panic!("expected error"),
+        }
+        // check that undo works
+        d.file_database.undo().unwrap();
+        let value_after_undo = d.file_database.get(key1).unwrap();
+        assert_eq!(*value_after_undo[0], value);
         d.cleanup().unwrap();
     }
     #[test]
@@ -567,6 +625,10 @@ mod tests {
         let updated_value = d.file_database.get(key).unwrap();
         assert_eq!(*updated_value[0], value2);
         assert_eq!(updated_value.len(), 1);
+        // check that undo works
+        d.file_database.undo().unwrap();
+        let old = d.file_database.get(key).unwrap();
+        assert_eq!(*old[0], value1);
         d.cleanup().unwrap();
     }
     #[test]
