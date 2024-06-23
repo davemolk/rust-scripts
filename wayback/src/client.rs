@@ -50,10 +50,6 @@ pub struct WaybackClient {
 // hit one of the backend apis to get URLs captured for the given URL prefix
 const WAYBACK_BASE: &str = "https://web.archive.org/web/timemap/json?matchType=prefix&collapse=urlkey&output=json&fl=original%2Cmimetype%2Ctimestamp%2Cendtimestamp%2Cgroupcount%2Cuniqcount&filter=!statuscode%3A[45]..&limit=10000&_=";
 
-trait WaybackAPI {
-    fn get_all_sitemap(&self, url: String) -> Result<WaybackResponse>;
-}
-
 impl WaybackClient {
     pub fn new(args: Args) -> Self {
         WaybackClient{
@@ -157,6 +153,9 @@ type WaybackResponse = Vec<Vec<String>>;
 mod tests {
     use super::*;
     use chrono::NaiveDate;
+    trait WaybackAPI {
+        fn get_all_sitemap(&self, url: String) -> Result<WaybackResponse>;
+    }
     struct ClientMock{}
         impl WaybackAPI for ClientMock {
             fn get_all_sitemap(&self, _url: String) -> Result<WaybackResponse> {
