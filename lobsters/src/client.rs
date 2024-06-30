@@ -1,5 +1,5 @@
 use core::fmt;
-use std::collections::{self, HashMap};
+use std::collections::{self, HashMap, HashSet};
 use std::io::{self, Write};
 use open;
 
@@ -66,53 +66,106 @@ impl LobsterClient {
             return Err(anyhow!("{}", USAGE))
         }
         let url = if args.is_empty() || args[0].to_lowercase() != "hot" { URL_NEWEST } else { URL_HOTTEST };
-        let resp = self.get_lobsters(url)?;
-        for post in &resp {
+        let posts = self.get_lobsters(url)?;
+        let mut identifiers = HashSet::new();
+        for post in &posts {
             println!("{post}");
+            identifiers.insert(post.short_id.as_str());
+            identifiers.insert(post.title.as_str());
         }
-        self.prompt_user(&resp)?;
+        let input = self.prompt_user()?;
+        let post_url = self.get_url_from_user_input(input, &posts)?;
+        // comments
+        if post_url.starts_with("https://lobste") {
+            self.print_comments(&mut io::stdout(), &post_url)?;
+        } else {
+            open::that(post_url)?;
+        }
         Ok(())
+    }
+    fn prompt_user(&self) -> Result<String> {
+        println!("type 'open <id>' to open the url in a browser, the <id> to see the post's comments, or press any key to quit");
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input)?;
+        Ok(input.trim().to_string().to_lowercase())
     }
     fn get_lobsters(&self, url: &str) -> Result<ApiResponse> {
         let resp = self.client.get(url)
             .header(reqwest::header::ACCEPT,  "application/json")
             .header(reqwest::header::USER_AGENT, "https://github.com/davemolk/rust-scripts")
-            .send()?
-            .json::<ApiResponse>()?;
-        Ok(resp)
-    }
-    fn prompt_user(&self, posts: &Vec<Post>) -> Result<()> {
-        println!("type 'open <id>' to open the url in a browser, the <id> to see the post's comments, or press any key to quit");
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-        input = input.trim().to_string();
-        if input.starts_with("open") {
-            self.open_browser(&input, posts)?;
-        }
-        if !posts.iter().any(|e| input == e.short_id) {
-            return Err(anyhow!("that id is not recognized"));
-        }
-        self.print_comments(&mut io::stdout(), &input)?;
-        Ok(())
-    }
-    fn open_browser(&self, input: &str, posts: &Vec<Post>) -> Result<()> {
-        let parts: Vec<&str> = input.split(" ").collect();
-        if parts.len() != 2 {
-            return Err(anyhow!("to open a url in a browser, format as 'open s2zxwx'"));
-        }
-        for post in posts.iter() {
-            if post.short_id == parts[1] {
-                open::that(&post.url)?;
-                return Ok(())
+            .send()?;
+        match resp.status() {
+            reqwest::StatusCode::OK => {
+                let decoded = resp.json::<ApiResponse>()?;
+                return Ok(decoded);
+            }
+            _ => {
+                return Err(anyhow!("got unexpected status code: {}", resp.status()));
             }
         }
-        return Err(anyhow!("unable to find that id, please try again"))
     }
-    fn print_comments(&self, output: &mut dyn Write, input: &str) -> Result<()> {
+    fn get_url_from_user_input(&self, input: String, posts: &Vec<Post>) -> Result<String> {
+        let parts: Vec<&str> = input.split(" ").collect();
+        // open browser
+        if parts.len() > 1 {
+            return self.get_browser_url(&input, posts);
+        } 
+        self.get_comments_url(&input, posts)
+    }
+    fn get_browser_url(&self, input: &str, posts: &Vec<Post>) -> Result<String> {
+        if input.len() < 6 {
+            return Err(anyhow!("to open a url in a browser, format as 'open s2zxwx' or 'open <fragment of the title>'"));
+        }
+        // skip "open" plus the space
+        let cropped = match input.char_indices().skip(5).next() {
+            Some((pos, _)) => &input[pos..],
+            None => "",
+        };
+        if cropped.is_empty() {
+            return Err(anyhow!("please supply part of a post title or its id"));
+        }
+        self.check_for_matches(cropped, posts, false)
+    }
+    fn check_for_matches(&self, input: &str, posts: &Vec<Post>, for_comments: bool) -> Result<String> {
+        // check for multiple matches for the input
+        let mut matches: Vec<&str> = vec![];
+        let mut out = String::new();
+        for post in posts.iter() {
+            if post.title.to_lowercase().starts_with(input) {
+                matches.push(&post.title);
+                if for_comments {
+                    out = post.short_id.to_owned();
+                } else {
+                    out = post.url.to_owned();
+                }
+            }
+            if post.short_id.to_lowercase().starts_with(input) {
+                matches.push(&post.short_id);
+                if for_comments {
+                    out = post.short_id.to_owned();
+                } else {
+                    out = post.url.to_owned();
+                }
+            }
+        }
+        if matches.len() > 1 {
+            return Err(anyhow!("multiple matches for that input, please try again: {:?}", matches));
+        }  
+        if matches.is_empty() {
+            return Err(anyhow!("unable to find that title or id, please try again"));
+        }
+        Ok(out)
+    }
+    fn get_comments_url(&self, input: &str, posts: &Vec<Post>) -> Result<String>  {
+        match self.check_for_matches(input, posts, true) {
+            Ok(short_id) => Ok(format!("https://lobste.rs/s/{}.json", short_id)),
+            Err(e) => Err(e),
+        }
+    }
+    fn print_comments(&self, output: &mut dyn Write, comment_url: &str) -> Result<()> {
         let mut map: HashMap<&str, usize> = collections::HashMap::new();
-        let comment_url = format!("https://lobste.rs/s/{}.json", input);
-        let resp = self.get_comments(&comment_url)?;
-        writeln!(output, "\n\n{} comments:", resp.title)?;
+        let resp = self.get_comments(comment_url)?;
+        writeln!(output, "\n\ncomments for {}:", resp.title)?;
         for comment in &resp.comments {
             match &comment.parent_comment {
                 None => {
@@ -182,5 +235,68 @@ mod tests {
         let resp = client.get_comments("blah").expect("get comments failed");
         assert_eq!(resp.title, "Lila: a Lil Interpreter in Awk");
         assert_eq!(resp.comments.len(), 8);
+    }
+    #[test]
+    fn get_browser_url_input_too_short() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").expect("failed to read newest test data");
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "foo";
+        assert!(l.get_browser_url(input, &posts).is_err());
+    }
+    #[test]
+    fn get_browser_url_input_missing_identifier() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").expect("failed to read newest test data");
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "open ";
+        assert!(l.get_browser_url(input, &posts).is_err());
+    }
+    #[test]
+    fn get_browser_url_input_ambiguous_identifier() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").expect("failed to read newest test data");
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        // matches short_id and title
+        let input = "open a";
+        assert!(l.get_browser_url(input, &posts).is_err());
+    }
+    #[test]
+    fn get_browser_url_no_matches() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").expect("failed to read newest test data");
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "open b";
+        assert!(l.get_browser_url(input, &posts).is_err());
+    }
+    #[test]
+    fn get_browser_url_input_success_partial_match() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").expect("failed to read newest test data");
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "open the";
+        assert!(l.get_browser_url(input, &posts).is_ok());
+        let got = l.get_browser_url(input, &posts).unwrap();
+        assert_eq!(got, posts[0].url);
+    }
+    #[test]
+    fn get_browser_url_input_success_full_id() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").expect("failed to read newest test data");
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "open aedhvm";
+        assert!(l.get_browser_url(input, &posts).is_ok());
+        let got = l.get_browser_url(input, &posts).unwrap();
+        assert_eq!(got, posts[0].url);
+    }
+    #[test]
+    fn get_comments_url_success() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").expect("failed to read newest test data");
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "aedhvm";
+        assert!(l.get_comments_url(input, &posts).is_ok());
+        let got = l.get_comments_url(input, &posts).unwrap();
+        assert_eq!(got, format!("https://lobste.rs/s/{}.json", input));
     }
 }

@@ -20,3 +20,5 @@ kvs.db
 kvs.db.tmp
 usa-spending
 foo.txt
+.DS_Store
+high_scores.json
