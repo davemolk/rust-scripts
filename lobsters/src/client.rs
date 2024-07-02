@@ -67,11 +67,8 @@ impl LobsterClient {
         }
         let url = if args.is_empty() || args[0].to_lowercase() != "hot" { URL_NEWEST } else { URL_HOTTEST };
         let posts = self.get_lobsters(url)?;
-        let mut identifiers = HashSet::new();
         for post in &posts {
             println!("{post}");
-            identifiers.insert(post.short_id.as_str());
-            identifiers.insert(post.title.as_str());
         }
         let input = self.prompt_user()?;
         let post_url = self.get_url_from_user_input(input, &posts)?;
@@ -227,7 +224,7 @@ mod tests {
     fn get_lobsters() {
         let client = ClientMock{};
         let resp = client.get_lobsters("foo").expect("get lobsters failed");
-        assert_eq!(resp[0].title, "The await event horizon in JavaScript")  
+        assert_eq!(resp[0].title, "The await event horizon in JavaScript");
     }
     #[test]
     fn get_comments() {
@@ -270,7 +267,7 @@ mod tests {
         assert!(l.get_browser_url(input, &posts).is_err());
     }
     #[test]
-    fn get_browser_url_input_success_partial_match() {
+    fn get_browser_url_input_success_partial_title_match() {
         let l = LobsterClient::new();
         let data = std::fs::read_to_string("newest_response.json").expect("failed to read newest test data");
         let posts: ApiResponse = serde_json::from_str(&data).unwrap();
@@ -298,5 +295,87 @@ mod tests {
         assert!(l.get_comments_url(input, &posts).is_ok());
         let got = l.get_comments_url(input, &posts).unwrap();
         assert_eq!(got, format!("https://lobste.rs/s/{}.json", input));
+    }
+    #[test]
+    fn get_comments_url_failure() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").expect("failed to read newest test data");
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "b";
+        assert!(l.get_comments_url(input, &posts).is_err());
+    }
+    #[test]
+    fn check_for_matches_no_matches() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").expect("failed to read newest test data");
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "b";
+        // for comments
+        assert!(l.check_for_matches(input, &posts, true).is_err());        
+        // for titles
+        assert!(l.check_for_matches(input, &posts, false).is_err());
+    }
+    #[test]
+    fn check_for_matches_multiple_matches() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").unwrap();
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "a";
+        // comments
+        assert!(l.check_for_matches(input, &posts, true).is_err());
+        // titles
+        assert!(l.check_for_matches(input, &posts, false).is_err());
+    }
+    #[test]
+    fn check_for_matches_success_partial_id() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").unwrap();
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "q";
+        // comments
+        assert!(l.check_for_matches(input, &posts, true).is_ok());
+        let got = l.check_for_matches(input, &posts, true).unwrap();
+        assert_eq!(got, posts[2].short_id);
+        // titles
+        assert!(l.check_for_matches("b", &posts, false).is_err());
+    }
+    #[test]
+    fn check_for_matches_success_full_id() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").unwrap();
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "qyaupk";
+        // comments
+        assert!(l.check_for_matches(input, &posts, true).is_ok());
+        let got = l.check_for_matches(input, &posts, true).unwrap();
+        assert_eq!(got, posts[2].short_id);
+        // titles
+        assert!(l.check_for_matches("b", &posts, false).is_err());
+    }
+    #[test]
+    fn check_for_matches_success_partial_title() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").unwrap();
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "the";
+        // comments
+        assert!(l.check_for_matches("b", &posts, true).is_err());
+        // title
+        assert!(l.check_for_matches(input, &posts, false).is_ok());
+        let got = l.check_for_matches(input, &posts, false).unwrap();
+        assert_eq!(got, posts[0].url);
+    }
+    #[test]
+    fn check_for_matches_success_full_title() {
+        let l = LobsterClient::new();
+        let data = std::fs::read_to_string("newest_response.json").unwrap();
+        let posts: ApiResponse = serde_json::from_str(&data).unwrap();
+        let input = "the await event horizon in javascript";
+        // comments
+        assert!(l.check_for_matches("b", &posts, true).is_err());
+        // titles
+        assert!(l.check_for_matches(input, &posts, false).is_ok());
+        let got = l.check_for_matches(input, &posts, false).unwrap();
+        assert_eq!(got, posts[0].url);
     }
 }
