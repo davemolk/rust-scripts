@@ -1,5 +1,5 @@
 use core::fmt;
-use std::collections::{self, HashMap, HashSet};
+use std::collections::{self, HashMap};
 use std::io::{self, Write};
 use open;
 
