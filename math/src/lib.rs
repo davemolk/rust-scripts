@@ -2,22 +2,31 @@ use std::collections::HashMap;
 use std::io::BufReader;
 use std::io;
 use std::fs::{File, OpenOptions};
-use std::ops::Div;
 use rand::Rng;
 use rand::seq::SliceRandom;
 use colored::Colorize;
 use anyhow::{anyhow, Result};
 use clap::{Parser, ValueEnum};
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 mod ascii;
+mod rps;
 
 #[derive(Parser, Debug)]
 pub struct Args {
-    /// largest number to use (default is 10)
+    /// largest number to use (default for beginner is 10)
+    /// 
+    /// (also configured by difficulty level)
     #[arg(short, long)]
     largest: Option<i32>,
+    /// smallest number to use (default for beginner is 0)
+    /// 
+    /// (also configured by difficulty level)
+    #[arg(short, long)]
+    smallest: Option<i32>,
     /// number of guesses, default is unlimited
+    /// 
+    /// (also configured by difficulty level)
     #[arg(short, long)]
     guesses: Option<i32>,
     /// operations to include (options are addition,
@@ -27,6 +36,8 @@ pub struct Args {
     /// you want to practice (some combo of asmd)
     /// 
     /// default is addition and subtraction
+    /// 
+    /// (also configured by difficulty level)
     #[arg(short, long)]
     #[arg(value_parser = parse_operations)]
     operations: Option<String>,
@@ -174,13 +185,29 @@ impl User {
         Ok(scores)
     }
     fn run_game_loop(&mut self) -> Result<()> {
-        let mut largest = 10;
+        let mut largest = match self.difficulty {
+            Difficulty::Beginner => 10,
+            Difficulty::AdvancedBeginner => 20,
+            Difficulty::Intermediate => 10,
+            Difficulty::Advanced => 20,
+            Difficulty::Expert => 50,
+        };
         if let Some(n) = self.args.largest {
             largest = n;
         }
+        let mut smallest = match self.difficulty {
+            Difficulty::Beginner => 0,
+            Difficulty::AdvancedBeginner => 0,
+            Difficulty::Intermediate => 0,
+            Difficulty::Advanced => -20,
+            Difficulty::Expert => -50,
+        };
+        if let Some(s) = self.args.smallest {
+            smallest = s;
+        }
         loop {
-            let num1 = rand::thread_rng().gen_range(1..=largest);
-            let num2 = rand::thread_rng().gen_range(1..=largest);
+            let num1 = rand::thread_rng().gen_range(smallest..=largest);
+            let num2 = rand::thread_rng().gen_range(smallest..=largest);
             let keep_playing = self.solve_math_problem(num1, num2)?;
             if !keep_playing {
                 break
@@ -197,7 +224,7 @@ impl User {
     fn solve_math_problem(&mut self, num1: i32, num2: i32) -> Result<bool> {
         let op = self.choose_operation();
         let mut div_total = 0;
-        // shadow in case it's 0 and division
+        // shadow in case it's 0 and operation is division
         let mut num2 = num2;
         let want = match op {
             Operations::Addition => num1 + num2,
@@ -219,11 +246,20 @@ impl User {
         }
         let mut guess_count = 0;
         loop {
+            let mut allowed_guesses = match self.difficulty {
+                Difficulty::Beginner => 2_147_483_647,
+                Difficulty::AdvancedBeginner => 3,
+                Difficulty::Intermediate => 5,
+                Difficulty::Advanced => 2,
+                Difficulty::Expert => 1,
+            };
+            // check for over-ride
             if let Some(g) = self.args.guesses {
-                if guess_count > g {
-                    println!("all out of guesses, better luck next time!");
-                    return Ok(false);
-                }
+                allowed_guesses = g;
+            }
+            if guess_count == allowed_guesses {
+                println!("all out of guesses, better luck next time!");
+                return Ok(false);
             }
             let mut guess = String::new();
             io::stdin().read_line(&mut guess)?;
@@ -263,6 +299,13 @@ impl User {
                             self.show_high_score = false;
                         }
                     }
+                }
+                if self.score == 2 {
+
+                    // todo: save before we go to a game
+
+                    println!("you're doing great!!! let's relax and play some rock paper scissors\n\n");
+                    rps::run_rps()?;
                 }
                 return Ok(true)
             }
