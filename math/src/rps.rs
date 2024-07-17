@@ -2,8 +2,10 @@ use rand::seq::SliceRandom;
 use anyhow::{anyhow, Result};
 use std::{io, thread};
 use std::time::Duration;
+use colored::Colorize;
 
 use crate::ascii;
+use crate::util;
 
 struct RockPaperScissors {
     score: i32,
@@ -36,28 +38,33 @@ impl RockPaperScissors {
             Self::one_two_three(parsed, computer_choice);
             match Self::determine_winner(parsed, computer_choice) {
                 Outcome::Tie => {
-                    println!("tie! let's play again");
+                    let (r, g, b) = util::color();
+                    println!("{}", "tie! let's play again".truecolor(r, g, b));
                 },
                 Outcome::Lose => {
-                    println!("you lose :/");
+                    println!("{}", "you lose :/".red());
                     self.lives -= 1;
                     if self.lives == 0 {
-                        println!("see you again soon");
+                        let (r, g, b) = util::color();
+                        println!("{}", "see you again soon".truecolor(r, g, b));
                         break
                     }
                     println!("now you have {} lives left", self.lives)
                 },
                 Outcome::Win => {
-                    println!("you win!");
+                    let (r, g, b) = util::color();
+                    println!("{}", "you win!".truecolor(r, g, b));
                     self.score += 1;
-                    println!("you have {} points. let's play!", self.score);
+                    let points = if self.score == 1 { "point"} else { "points" };
+                    println!("you have {} {}. let's play!", self.score, points);
                 }
             }
         }
         Ok(())
     }
     fn one_two_three(player: Choice, computer: Choice) {
-        println!("{}", ascii::THREE);
+        let (r, g, b) = util::color();
+        println!("{}", ascii::THREE.truecolor(r, g, b));
         thread::sleep(Duration::from_secs(1));
         // move cursor up 6 lines
         print!("\x1B[6A");
@@ -68,7 +75,7 @@ impl RockPaperScissors {
         }
         // go back
         print!("\x1B[6A");
-        println!("{}", ascii::TWO);
+        println!("{}", ascii::TWO.truecolor(r, g, b));
         thread::sleep(Duration::from_secs(1));
         print!("\x1B[6A");
         for _ in 0..6 {
@@ -76,7 +83,7 @@ impl RockPaperScissors {
             println!();
         }
         print!("\x1B[6A");
-        println!("{}", ascii::ONE);
+        println!("{}", ascii::ONE.truecolor(r, g, b));
         thread::sleep(Duration::from_secs(1));
         print!("\x1B[6A");
         for _ in 0..6 {
@@ -104,11 +111,11 @@ impl RockPaperScissors {
         }
     }
     fn prompt_user() -> Result<String> {
-        println!("enter rock, paper, or scissors...good luck!");
+        println!("enter rock, paper, or scissors...good luck!\n");
         let mut user_rps = String::new();
         io::stdin().read_line(&mut user_rps)?;
         if user_rps.trim().is_empty() {
-            eprintln!("you need to pick something...hmmm...");
+            eprintln!("you need to pick something...hmmm...i'll pick for you");
             let choices = vec!["rock", "paper", "scissors"];
             match choices.choose(&mut rand::thread_rng()) {
                 Some(c) => { 
@@ -146,6 +153,8 @@ impl RockPaperScissors {
 
 pub fn run_rps() -> Result<()> {
     let mut game = RockPaperScissors::new();
+    let (r, g, b) = util::color();
+    println!("{}\n\n", ascii::ROCK_PAPER_SCISSORS.truecolor(r, g, b));
     game.play()?;
     Ok(())
 }

@@ -11,6 +11,9 @@ use std::time::SystemTime;
 
 mod ascii;
 mod rps;
+mod guess_the_number;
+mod util;
+mod hide_and_seek;
 
 #[derive(Parser, Debug)]
 pub struct Args {
@@ -75,6 +78,13 @@ enum Difficulty {
     Intermediate,
     Advanced,
     Expert,
+}
+
+#[derive(Debug)]
+enum Games {
+    RockPaperScissors,
+    NumberGuess,
+    NoGame,
 }
 
 #[derive(Debug)]
@@ -145,7 +155,10 @@ impl User {
         ops
     }
     pub fn play(&mut self) -> Result<()> {
-        let start_time = SystemTime::now();
+        hide_and_seek::run_hide_and_seek()?;
+
+
+
         if self.high_scores.contains_key(&self.name) {
             println!("\nwelcome back {}! let's see if you can beat your previous high score of {:?}\n", self.name, self.high_scores.get(&self.name).unwrap());
         } else {
@@ -166,12 +179,7 @@ impl User {
             ),
         );
         self.run_game_loop()?;
-        let end_time = SystemTime::now();
-        if let Ok(dur) = end_time.duration_since(start_time) {
-            let seconds = dur.as_secs() % 60;
-            let minutes = (dur.as_secs() / 60) & 60;
-            println!("you played for {} minutes and {} seconds and answered {} questions correctly, great job!", minutes, seconds, self.score);
-        }
+        println!("you answered {} questions correctly, great job!", self.score);
         Ok(())
     }
     fn load_scores(path: &str) ->Result<HashMap<String,u16>> {
@@ -268,17 +276,10 @@ impl User {
                 continue
             }
             if guess.trim().chars().nth(0).unwrap() == 'q' {
-                let (r, g, b) = Self::color();
+                let (r, g, b) = util::color();
                 println!("{}", ascii::THANKS_FOR_PLAYING.truecolor(r, g, b));
                 // save current score
-                self.high_scores.entry(self.name.to_owned())
-                    .and_modify(|s| { *s = if self.score > *s { self.score } else { *s } })
-                    .or_insert(self.score);
-                let file = File::create(&self.file_name)?;
-                    match serde_json::to_writer_pretty(file, &self.high_scores) {
-                        Err(e) => return Err(anyhow!("failed to save high scores {}", e)),
-                        Ok(_) => {},
-                    }
+                self.save_game()?;
                 return Ok(false)
             }
             let guess: i32 = match guess.trim().parse() {
@@ -294,18 +295,24 @@ impl User {
                 if self.show_high_score {
                     if let Some(score) = self.high_scores.get(&self.name) {
                         if self.score > *score {
-                            let (r, g, b) = Self::color();
+                            let (r, g, b) = util::color();
                             println!("{}", ascii::NEW_HIGH_SCORE.truecolor(r, g, b));
                             self.show_high_score = false;
                         }
                     }
                 }
                 if self.score == 2 {
-
-                    // todo: save before we go to a game
-
-                    println!("you're doing great!!! let's relax and play some rock paper scissors\n\n");
-                    rps::run_rps()?;
+                    self.save_game()?;
+                    let choice = self.pick_game()?;
+                    match choice {
+                        Games::RockPaperScissors => {
+                            rps::run_rps()?;
+                        }
+                        Games::NumberGuess => {
+                            guess_the_number::run_number_guess()?;
+                        }
+                        Games::NoGame => {},
+                    }
                 }
                 return Ok(true)
             }
@@ -313,18 +320,40 @@ impl User {
             guess_count += 1;
         }
     }
+    fn save_game(&mut self) -> Result<()> {
+        self.high_scores.entry(self.name.to_owned())
+            .and_modify(|s| { *s = if self.score > *s { self.score } else { *s } })
+            .or_insert(self.score);
+        let file = File::create(&self.file_name)?;
+        match serde_json::to_writer_pretty(file, &self.high_scores) {
+            Err(e) => return Err(anyhow!("failed to save high scores {}", e)),
+            Ok(_) => Ok({}),
+        }
+    }
     fn praise(&self) {
-        let (r, g, b) = Self::color();
+        let (r, g, b) = util::color();
         let praise = vec!["good job!", "awesome!", "right on!", "cowabunga!", "gnarly!", "phat!", "swell!", "bodacious!", "party on!", "sizzling!", "dope!", "party time!", "super!", "excellent!", "you got it!", "you rock!", "you're awesome!", "you're the best!", "rock on!", "you're doing great!", "kick butt!", "yay!", "hurray!", "oh boy!"];
         match praise.choose(&mut rand::thread_rng()) {
             Some(c) => println!("{}{} {}\n", c.truecolor(r, g, b), " now your score is".truecolor(r, g, b), self.score),
             None => println!("great job! now your score is {}\n", self.score),
         }
     }
-    fn color() -> (u8, u8, u8) {
-        let r = rand::thread_rng().gen_range(0..=255);
-        let g = rand::thread_rng().gen_range(0..=255);
-        let b = rand::thread_rng().gen_range(0..=255);
-        (r, g, b)
+    fn pick_game(&self) -> Result<Games> {
+        let (r, g, b) = util::color();
+        println!("{}", ascii::BONUS_GAME.truecolor(r, g, b));
+        println!("Enter 1 for Rock Paper Scissors");
+        println!("Enter 2 for Guess The Number");
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        if input.trim().is_empty() {
+            return Ok(Games::NoGame);
+        }
+        let choice: Games;
+        match input.trim().as_ref() {
+            "1" => choice = Games::RockPaperScissors,
+            "2" => choice = Games::NumberGuess,
+            _ => choice = Games::NoGame,
+        };
+        Ok(choice)
     }
 }
