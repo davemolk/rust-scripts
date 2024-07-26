@@ -61,7 +61,7 @@ struct Game {
 
 impl Game {
     fn new(hiding_spot: ActualHidingSpot, config: Config) -> Self {
-        // we've validated that there is at least two floors
+        // we've validated that there are at least two floors, so unwrap is ok
         let current_floor = config.map.values().next().unwrap();
         let floors: Vec<String> = config.map.keys().cloned().collect();
         Game {
@@ -75,58 +75,64 @@ impl Game {
             done_playing: false,
         }
     }
-    fn run_game_loop(&mut self) -> Result<()> {
+    fn run_game_loop(&mut self) {
+        println!("search through the house and see what you find...");
+        println!("press q at any time to quit\n\n");
         loop {
-            let keep_playing = self.play()?;
+            let keep_playing = match self.play() {
+                Err(e) => {
+                    eprintln!("{}", e);
+                    break
+                },
+                Ok(p) => { p },
+            };
             if !keep_playing {
                 break
             }
         }
-        Ok(())
     }
     fn play(&mut self) -> Result<bool> {
-        println!("search through the house and see what you find...");
-        println!("press q at any time to quit\n\n");
         // todo: remove secret
-        // println!("{:?}", self.hiding_spot);
-        loop {
-            let mut want_to_search = false; 
-            match self.search_or_change_floor()? {
-                FloorChoice::Change => {
-                    self.change_floors()?;
-                },
-                FloorChoice::Search => {
-                    want_to_search = self.pick_room()?;
-                },
-            }
-            if want_to_search {
-                self.search_room()?;
-            }
-            if self.done_playing {
-                return Ok(false);
-            }
-        }
-    }
-    fn search_or_change_floor(&mut self) -> Result<FloorChoice> {
+        println!("{:?}", self.hiding_spot);
         if self.current_floor == self.hiding_spot.floor {
             self.correct_floor();
         }
-        println!("you're on the {}\n", self.current_floor);
-        println!("enter 1 to search this floor");
-        println!("enter 2 to move to a different floor\n");
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        println!();
-        let choice = match input.trim() {
-            "1" => FloorChoice::Search,
-            "2" => FloorChoice::Change,
-            "q" => {
-                self.done_playing = true;
-                return Err(anyhow!("thanks for playing!\n\n"));
+        loop {
+            println!("you're on the {}\n", self.current_floor);
+            println!("enter 1 to search this floor");
+            println!("enter 2 to move to a different floor\n");
+            loop {
+                let mut input = String::new();
+                io::stdin().read_line(&mut input)?;
+                println!();
+                let choice = input.trim();
+                if choice == "q" {
+                    return Ok(false)
+                }
+                if choice == "1".to_owned() {
+                    break
+                } else if choice == "2" {
+                    self.change_floors()?;
+                    break
+                }
+                eprintln!("input not recognized, please try again");
             }
-            _ => FloorChoice::Search,
-        };
-        Ok(choice)
+            loop {
+                let want_to_search = self.search_floor()?;
+                if !want_to_search {
+                    break
+                }
+                loop {
+                    let switch_room = self.search_room()?;
+                    if switch_room {
+                        break
+                    }
+                    if self.done_playing {
+                        return Ok(false);
+                    }
+                }
+            }
+        }
     }
     fn change_floors(&mut self) -> Result<()> {
         println!("enter the number of the floor you'd like to search");
@@ -134,24 +140,30 @@ impl Game {
             println!("{}: {}", i+1, floor);
         }
         println!();
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        println!();
-        let floor = input.trim();
-        if floor == "q" {
-            self.done_playing = true;
-            return Err(anyhow!("thanks for playing!\n\n"));
+        loop {
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            println!();
+            let floor = input.trim();
+            if floor == "q" {
+                self.done_playing = true;
+                return Err(anyhow!("thanks for playing!\n"));
+            }
+            let floor_idx = floor.parse::<usize>()?;
+            if floor_idx != 0 && floor_idx <= self.floors.len() {
+                // update current floor
+                let current_floor = &self.floors[floor_idx-1];
+                self.current_floor = current_floor.to_owned();
+                if self.current_floor == self.hiding_spot.floor {
+                    self.correct_floor();
+                }
+                break
+            }
+            eprintln!("sorry, {} is not a valid choice, please try again\n", floor);
         }
-        let floor_idx = floor.parse::<usize>()?;
-        if floor_idx == 0 || floor_idx > self.floors.len() {
-            return Err(anyhow!("{} is not a valid choice", floor))
-        }
-        // update current floor
-        let current_floor = &self.floors[floor_idx-1];
-        self.current_floor = current_floor.to_owned();
         Ok(())
     }
-    fn pick_room(&mut self) -> Result<bool> {
+    fn search_floor(&mut self) -> Result<bool> {
         let available_rooms = self.config.map.get(&self.current_floor).unwrap();
         println!("\nenter the number of the room you want to search");
         println!("enter d to search a different floor\n");
@@ -159,7 +171,6 @@ impl Game {
             println!("{}: {}", idx+1, room.name);
         }
         println!();
-        let mut search = false;
         loop {
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
@@ -167,24 +178,21 @@ impl Game {
             let room = input.trim();
             if room == "q" {
                 self.done_playing = true;
-                return Err(anyhow!("thanks for playing!")); 
+                return Err(anyhow!("thanks for playing!\n")); 
             }
             if room == "d" {
-                break
+                return Ok(false)
             }
             let room_idx = room.parse::<usize>()?;
-            if room_idx == 0 || room_idx > available_rooms.rooms.len() {
-                eprintln!("{} is not a valid choice", room);
-                continue
+            if room_idx != 0 && room_idx <= available_rooms.rooms.len() {
+                let curr_room = &available_rooms.rooms[room_idx-1];
+                self.current_room = Some(Room { name: curr_room.name.to_owned(), hiding_spots: curr_room.hiding_spots.clone() });
+                return Ok(true)
             }
-            let curr_room = &available_rooms.rooms[room_idx-1];
-            self.current_room = Some(Room { name: curr_room.name.to_owned(), hiding_spots: curr_room.hiding_spots.clone() });
-            search = true;
-            break
+            eprintln!("sorry, {} is not a valid choice, please try again\n", room);
         }
-        Ok(search)
     }
-    fn search_room(&mut self) -> Result<()> {
+    fn search_room(&mut self) -> Result<bool> {
         if self.current_room.as_ref().unwrap().name == self.hiding_spot.room {
             self.correct_room();
         }
@@ -203,10 +211,10 @@ impl Game {
             let spot = input.trim();
             if spot == "q" {
                 self.done_playing = true;
-                return Err(anyhow!("thanks for playing!")); 
+                return Err(anyhow!("thanks for playing!\n")); 
             }
             if spot == "d" {
-                break
+                return Ok(true);
             }
             let spot_idx = spot.parse::<usize>()?;
             if spot_idx == 0 || spot_idx > room.hiding_spots.len() {
@@ -218,37 +226,37 @@ impl Game {
                 println!("{}\n\n", ascii::BUNNY);
                 println!("you win!");
                 self.done_playing = true;
-                break
-            } else {
-                println!("not there, try again!\n")
-            }
+                return Ok(false)
+            } 
+            println!("not there, try again!\n")
         }
-        Ok(())
     }
     fn correct_floor(&mut self) {
         if !self.get_first_hint {
             return;
         }
+        sleep(std::time::Duration::from_millis(1500));
         println!("\nshhhh...\n\n");
-        sleep(std::time::Duration::from_secs(1));
+        sleep(std::time::Duration::from_millis(1500));
         println!("...you hear...\n\n");
-        sleep(std::time::Duration::from_secs(2));
+        sleep(std::time::Duration::from_millis(1500));
         println!("...some giggling...\n\n");
-        sleep(std::time::Duration::from_secs(2));
+        sleep(std::time::Duration::from_millis(1500));
         self.get_first_hint = false;
     }
     fn correct_room(&mut self) {
         if !self.get_second_hint {
             return;
         }
+        sleep(std::time::Duration::from_millis(1500));
         println!("\nshhhh...\n\n");
-        sleep(std::time::Duration::from_secs(1));
+        sleep(std::time::Duration::from_millis(1500));
         println!("...you hear...\n\n");
-        sleep(std::time::Duration::from_secs(2));
+        sleep(std::time::Duration::from_millis(1500));
         println!("...some LOUD...\n\n");
-        sleep(std::time::Duration::from_secs(2));
+        sleep(std::time::Duration::from_millis(1500));
         println!("...BREATHING...\n\n");
-        sleep(std::time::Duration::from_secs(2));
+        sleep(std::time::Duration::from_millis(1500));
         self.get_second_hint = false;
     }
 }
@@ -304,7 +312,7 @@ pub fn run_hide_and_seek() -> Result<()> {
     let mut game = Game::new(hiding_spot, config);
     let (r, g, b) = util::color();
     println!("{}\n\n", ascii::HIDE_AND_SEEK.truecolor(r, g, b));
-    game.run_game_loop()?;
+    game.run_game_loop();
     Ok(())
 }
 
@@ -414,7 +422,7 @@ mod tests {
     }
     #[test]
     fn generate_hiding_spot_always_some_with_valid_config() {
-        let f = fs::read_to_string("./src/dummy_hs_config.json").unwrap();
+        let f = fs::read_to_string("./example/dummy_hs_config.json").unwrap();
         let config:Config = serde_json::from_str(&f).unwrap();
         for _ in [1..=100] {
             assert!(generate_hiding_spot(&config).is_some());

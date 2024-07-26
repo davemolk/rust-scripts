@@ -7,7 +7,6 @@ use rand::seq::SliceRandom;
 use colored::Colorize;
 use anyhow::{anyhow, Result};
 use clap::{Parser, ValueEnum};
-use std::time::SystemTime;
 
 mod ascii;
 mod rps;
@@ -84,6 +83,7 @@ enum Difficulty {
 enum Games {
     RockPaperScissors,
     NumberGuess,
+    HideAndSeek,
     NoGame,
 }
 
@@ -104,9 +104,10 @@ impl User {
         println!("what's your name?");
         let mut name = String::new();
         io::stdin().read_line(&mut name).unwrap();
+        println!();
         let mut cleaned_name = name.trim().to_owned();
         if cleaned_name.is_empty() {
-            println!("everyone has a name...let's call you pooh");
+            println!("everyone has a name...so let's call you pooh");
             cleaned_name = String::from("pooh");
         }
         let path = String::from("high_scores.json");
@@ -164,7 +165,7 @@ impl User {
         } else {
             println!("hi {}", self.name);
         }
-        println!("press q when you're done playing...");
+        println!("press q when you're done playing...\n");
         println!("{}{}{}{}{} {}{}{}{}{}\n",
             "l".bright_red(), 
             "e".truecolor(255, 103, 0),
@@ -271,6 +272,7 @@ impl User {
             }
             let mut guess = String::new();
             io::stdin().read_line(&mut guess)?;
+            println!();
             if guess.trim().is_empty() {
                 println!("please enter a guess");
                 continue
@@ -301,18 +303,12 @@ impl User {
                         }
                     }
                 }
-                if self.score == 2 {
-                    self.save_game()?;
-                    let choice = self.pick_game()?;
-                    match choice {
-                        Games::RockPaperScissors => {
-                            rps::run_rps()?;
-                        }
-                        Games::NumberGuess => {
-                            guess_the_number::run_number_guess()?;
-                        }
-                        Games::NoGame => {},
-                    }
+                if self.score == 5 {
+                    self.play_game()?;
+                } else if self.score == 10 {
+                    self.play_game()?;
+                } else if self.score % 10 == 0 {
+                    self.play_game()?;
                 }
                 return Ok(true)
             }
@@ -342,9 +338,12 @@ impl User {
         let (r, g, b) = util::color();
         println!("{}", ascii::BONUS_GAME.truecolor(r, g, b));
         println!("Enter 1 for Rock Paper Scissors");
-        println!("Enter 2 for Guess The Number");
+        println!("Enter 2 for Guess the Number");
+        println!("Enter 3 for Hide and Seek");
+        println!("Enter 4 for More Math Problems!");
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
+        println!();
         if input.trim().is_empty() {
             return Ok(Games::NoGame);
         }
@@ -352,8 +351,20 @@ impl User {
         match input.trim().as_ref() {
             "1" => choice = Games::RockPaperScissors,
             "2" => choice = Games::NumberGuess,
+            "3" => choice = Games::HideAndSeek,
             _ => choice = Games::NoGame,
         };
         Ok(choice)
+    }
+    fn play_game(&mut self) -> Result<()> {
+        self.save_game()?;
+        let choice = self.pick_game()?;
+        match choice {
+            Games::RockPaperScissors => rps::run_rps()?,
+            Games::NumberGuess => guess_the_number::run_number_guess()?,
+            Games::HideAndSeek => hide_and_seek::run_hide_and_seek()?,
+            Games::NoGame => {},
+        }
+        Ok(())
     }
 }

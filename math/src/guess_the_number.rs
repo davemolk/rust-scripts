@@ -21,24 +21,33 @@ impl NumberGuess {
         let rand_number = rand::thread_rng().gen_range(0..=100);
         loop {
             if self.guesses == 0 {
+                let (r, g, b) = util::color();
+                println!("{} ", "thanks for playing!".truecolor(r, g, b));
+                println!("{} {}{}\n", "you scored".truecolor(r, g, b), self.score, ", awesome job!".truecolor(r, g, b));
                 return Ok(false);
             }
             println!("enter your guess...");
             let mut guess = String::new();
             io::stdin().read_line(&mut guess)?;
+            println!();
             let g = guess.trim().parse::<i32>()?;
             if g == rand_number {
-                println!("you got it!");
+                let (r, g, b) = util::color();
+                println!("{}", "you got it!".truecolor(r, g, b));
                 self.score += 1;
                 return Ok(true)
             } else if g < rand_number {
                 println!("too low");
                 self.guesses -= 1;
-                println!("you've got {} guesses left", self.guesses);
+                if self.guesses != 0 {
+                    println!("you've got {} guesses left\n", self.guesses);
+                }
             } else {
                 println!("too high");
                 self.guesses -= 1;
-                println!("you've got {} guesses left", self.guesses);
+                if self.guesses != 0 {
+                    println!("you've got {} guesses left\n", self.guesses);
+                }
             }
         }
     }
