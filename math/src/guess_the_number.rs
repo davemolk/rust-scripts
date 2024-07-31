@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rand::Rng;
 use std::io;
+use std::cmp::Ordering;
 use colored::Colorize;
 
 use crate::ascii;
@@ -31,22 +32,26 @@ impl NumberGuess {
             io::stdin().read_line(&mut guess)?;
             println!();
             let g = guess.trim().parse::<i32>()?;
-            if g == rand_number {
-                let (r, g, b) = util::color();
-                println!("{}", "you got it!".truecolor(r, g, b));
-                self.score += 1;
-                return Ok(true)
-            } else if g < rand_number {
-                println!("too low");
-                self.guesses -= 1;
-                if self.guesses != 0 {
-                    println!("you've got {} guesses left\n", self.guesses);
-                }
-            } else {
-                println!("too high");
-                self.guesses -= 1;
-                if self.guesses != 0 {
-                    println!("you've got {} guesses left\n", self.guesses);
+            match g.cmp(&rand_number) {
+                Ordering::Equal => {
+                    let (r, g, b) = util::color();
+                    println!("{}", "you got it!".truecolor(r, g, b));
+                    self.score += 1;
+                    return Ok(true)
+                },
+                Ordering::Less => {
+                    println!("too low");
+                    self.guesses -= 1;
+                    if self.guesses != 0 {
+                        println!("you've got {} guesses left\n", self.guesses);
+                    }
+                },
+                _ => {
+                    println!("too high");
+                    self.guesses -= 1;
+                    if self.guesses != 0 {
+                        println!("you've got {} guesses left\n", self.guesses);
+                    }
                 }
             }
         }

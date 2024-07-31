@@ -2,7 +2,6 @@ use serde_derive::Deserialize;
 use std::collections::HashMap;
 use std::thread::sleep;
 use std::{fs, io};
-use serde_json;
 use anyhow::{Result, anyhow};
 use rand::seq::{IteratorRandom, SliceRandom};
 use colored::Colorize;
@@ -34,12 +33,6 @@ struct HidingSpot {
     name: String
 }
 
-#[derive(Debug, Copy, Clone)]
-enum FloorChoice {
-    Change,
-    Search,
-}
-
 #[derive(Debug, PartialEq)]
 struct ActualHidingSpot {
     name: String,
@@ -65,11 +58,11 @@ impl Game {
         let current_floor = config.map.values().next().unwrap();
         let floors: Vec<String> = config.map.keys().cloned().collect();
         Game {
-            hiding_spot: hiding_spot,
+            hiding_spot,
             current_floor: current_floor.name.to_owned(),
             current_room: None,
-            config: config,
-            floors: floors,
+            config,
+            floors,
             get_first_hint: true,
             get_second_hint: true,
             done_playing: false,
@@ -78,25 +71,18 @@ impl Game {
     fn run_game_loop(&mut self) {
         println!("search through the house and see what you find...");
         println!("press q at any time to quit\n\n");
-        loop {
-            let keep_playing = match self.play() {
-                Err(e) => {
-                    eprintln!("{}", e);
-                    break
-                },
-                Ok(p) => { p },
-            };
-            if !keep_playing {
-                break
-            }
-        }
+        if let Err(e) = self.play() {
+            eprintln!("{}", e);
+        };
+        println!("thanks for playing!!!")
     }
-    fn play(&mut self) -> Result<bool> {
+    fn play(&mut self) -> Result<()> {
         // todo: remove secret
         println!("{:?}", self.hiding_spot);
         if self.current_floor == self.hiding_spot.floor {
             self.correct_floor();
         }
+        // outer loop lets you change floors
         loop {
             println!("you're on the {}\n", self.current_floor);
             println!("enter 1 to search this floor");
@@ -107,9 +93,9 @@ impl Game {
                 println!();
                 let choice = input.trim();
                 if choice == "q" {
-                    return Ok(false)
+                    return Ok(())
                 }
-                if choice == "1".to_owned() {
+                if choice == "1" {
                     break
                 } else if choice == "2" {
                     self.change_floors()?;
@@ -117,18 +103,21 @@ impl Game {
                 }
                 eprintln!("input not recognized, please try again");
             }
+            // loop lets you pick a floor to search
             loop {
-                let want_to_search = self.search_floor()?;
-                if !want_to_search {
+                let want_to_change_floors = self.search_floor()?;
+                // go to outer "change floors" loop
+                if want_to_change_floors {
                     break
                 }
+                // loop lets you search rooms
                 loop {
-                    let switch_room = self.search_room()?;
-                    if switch_room {
+                    let want_to_change_rooms = self.search_room()?;
+                    if want_to_change_rooms {
                         break
                     }
                     if self.done_playing {
-                        return Ok(false);
+                        return Ok(());
                     }
                 }
             }
@@ -153,7 +142,7 @@ impl Game {
             if floor_idx != 0 && floor_idx <= self.floors.len() {
                 // update current floor
                 let current_floor = &self.floors[floor_idx-1];
-                self.current_floor = current_floor.to_owned();
+                current_floor.clone_into(&mut self.current_floor);
                 if self.current_floor == self.hiding_spot.floor {
                     self.correct_floor();
                 }
@@ -181,13 +170,13 @@ impl Game {
                 return Err(anyhow!("thanks for playing!\n")); 
             }
             if room == "d" {
-                return Ok(false)
+                return Ok(true)
             }
             let room_idx = room.parse::<usize>()?;
             if room_idx != 0 && room_idx <= available_rooms.rooms.len() {
                 let curr_room = &available_rooms.rooms[room_idx-1];
                 self.current_room = Some(Room { name: curr_room.name.to_owned(), hiding_spots: curr_room.hiding_spots.clone() });
-                return Ok(true)
+                return Ok(false)
             }
             eprintln!("sorry, {} is not a valid choice, please try again\n", room);
         }

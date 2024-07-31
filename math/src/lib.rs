@@ -13,6 +13,7 @@ mod rps;
 mod guess_the_number;
 mod util;
 mod hide_and_seek;
+mod trivia;
 
 #[derive(Parser, Debug)]
 pub struct Args {
@@ -53,7 +54,7 @@ fn parse_operations(arg: &str) -> Result<String> {
         return Err(anyhow!("valid input for operation flag is a, s, m, d, or some combination"));
     }
     let allowed: Vec<&str> = vec!["a", "s", "m", "d"];
-    for c in arg.trim().to_lowercase().split("").into_iter() {
+    for c in arg.trim().to_lowercase().split("") {
         if !allowed.contains(&c) {
             return Err(anyhow!("valid input for operation flag is a, s, m, d, or some combination"));
         }
@@ -84,6 +85,7 @@ enum Games {
     RockPaperScissors,
     NumberGuess,
     HideAndSeek,
+    Trivia,
     NoGame,
 }
 
@@ -127,7 +129,7 @@ impl User {
             Difficulty::Expert => vec![Operations::Addition, Operations::Subtraction, Operations::Multiplication, Operations::Division],
         };
         if let Some(ref o) = args.operations {
-            operations = Self::parse_operations(&o);
+            operations = Self::parse_operations(o);
         }
         User{ args, name: cleaned_name, score: 0, high_scores, file_name: path, operations, show_high_score: true, difficulty }
     }
@@ -137,16 +139,16 @@ impl User {
         }
         let mut ops = vec![];
         let args = args.to_lowercase();
-        if args.contains("a") {
+        if args.contains('a') {
             ops.push(Operations::Addition);
         }
-        if args.contains("s") {
+        if args.contains('s') {
             ops.push(Operations::Subtraction);
         }
-        if args.contains("m") {
+        if args.contains('m') {
             ops.push(Operations::Multiplication);
         }
-        if args.contains("d") {
+        if args.contains('d') {
             ops.push(Operations::Division);
         }
         // don't error on bad input, just return default
@@ -156,7 +158,8 @@ impl User {
         ops
     }
     pub fn play(&mut self) -> Result<()> {
-        hide_and_seek::run_hide_and_seek()?;
+        trivia::run_trivia()?;
+        // hide_and_seek::run_hide_and_seek()?;
 
 
 
@@ -303,11 +306,7 @@ impl User {
                         }
                     }
                 }
-                if self.score == 5 {
-                    self.play_game()?;
-                } else if self.score == 10 {
-                    self.play_game()?;
-                } else if self.score % 10 == 0 {
+                if self.score == 5 || self.score % 10 == 0{
                     self.play_game()?;
                 }
                 return Ok(true)
@@ -322,8 +321,8 @@ impl User {
             .or_insert(self.score);
         let file = File::create(&self.file_name)?;
         match serde_json::to_writer_pretty(file, &self.high_scores) {
-            Err(e) => return Err(anyhow!("failed to save high scores {}", e)),
-            Ok(_) => Ok({}),
+            Err(e) => Err(anyhow!("failed to save high scores {}", e)),
+            Ok(_) => Ok(()),
         }
     }
     fn praise(&self) {
@@ -340,19 +339,20 @@ impl User {
         println!("Enter 1 for Rock Paper Scissors");
         println!("Enter 2 for Guess the Number");
         println!("Enter 3 for Hide and Seek");
-        println!("Enter 4 for More Math Problems!");
+        println!("Enter 4 for Trivia");
+        println!("Enter 5 for More Math Problems!");
         let mut input = String::new();
         io::stdin().read_line(&mut input)?;
         println!();
         if input.trim().is_empty() {
             return Ok(Games::NoGame);
         }
-        let choice: Games;
-        match input.trim().as_ref() {
-            "1" => choice = Games::RockPaperScissors,
-            "2" => choice = Games::NumberGuess,
-            "3" => choice = Games::HideAndSeek,
-            _ => choice = Games::NoGame,
+        let choice: Games = match input.trim() {
+            "1" => Games::RockPaperScissors,
+            "2" => Games::NumberGuess,
+            "3" => Games::HideAndSeek,
+            "4" => Games::Trivia,
+            _ => Games::NoGame,
         };
         Ok(choice)
     }
@@ -363,6 +363,7 @@ impl User {
             Games::RockPaperScissors => rps::run_rps()?,
             Games::NumberGuess => guess_the_number::run_number_guess()?,
             Games::HideAndSeek => hide_and_seek::run_hide_and_seek()?,
+            Games::Trivia => trivia::run_trivia()?,
             Games::NoGame => {},
         }
         Ok(())

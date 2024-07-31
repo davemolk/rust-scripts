@@ -104,7 +104,7 @@ impl RockPaperScissors {
         println!("{} {}", player_art, computer_art);
     }
     fn computer_chooses() -> Choice {
-        let choices = vec![Choice::Rock, Choice::Paper, Choice::Scissors];
+        let choices = [Choice::Rock, Choice::Paper, Choice::Scissors];
         match choices.choose(&mut rand::thread_rng()) {
             Some(c) => { *c },
             None => { Choice::Rock },
@@ -116,7 +116,7 @@ impl RockPaperScissors {
         io::stdin().read_line(&mut user_rps)?;
         if user_rps.trim().is_empty() {
             eprintln!("you need to pick something...hmmm...i'll pick for you");
-            let choices = vec!["rock", "paper", "scissors"];
+            let choices = ["rock", "paper", "scissors"];
             match choices.choose(&mut rand::thread_rng()) {
                 Some(c) => { 
                     user_rps = (*c.to_owned()).to_string();
