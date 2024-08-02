@@ -9,7 +9,7 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, ValueEnum};
 
 mod ascii;
-mod rps;
+mod rock_paper_scissor;
 mod guess_the_number;
 mod util;
 mod hide_and_seek;
@@ -360,7 +360,7 @@ impl User {
         self.save_game()?;
         let choice = self.pick_game()?;
         match choice {
-            Games::RockPaperScissors => rps::run_rps()?,
+            Games::RockPaperScissors => rock_paper_scissor::run_rps()?,
             Games::NumberGuess => guess_the_number::run_number_guess()?,
             Games::HideAndSeek => hide_and_seek::run_hide_and_seek()?,
             Games::Trivia => trivia::run_trivia()?,

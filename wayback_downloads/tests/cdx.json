@@ -1,0 +1,23 @@
+[
+    ["original", "timestamp", "statuscode", "mimetype", "digest", "length"], 
+    ["http://davemolk.com/", "20150925144711", "301", "unk", "3I42H3S6NNFQ2MSVX7XZKYAYSCX5QBYJ", "414"], 
+    ["http://davemolk.com/", "20160110160616", "301", "unk", "3I42H3S6NNFQ2MSVX7XZKYAYSCX5QBYJ", "411"], 
+    ["http://davemolk.com/", "20160311112223", "-", "warc/revisit", "3I42H3S6NNFQ2MSVX7XZKYAYSCX5QBYJ", "455"], 
+    ["http://davemolk.com/", "20161001153043", "-", "warc/revisit", "3I42H3S6NNFQ2MSVX7XZKYAYSCX5QBYJ", "455"], 
+    ["http://davemolk.com/", "20170419050723", "301", "unk", "3I42H3S6NNFQ2MSVX7XZKYAYSCX5QBYJ", "404"], 
+    ["http://davemolk.com/", "20170911134429", "301", "unk", "3I42H3S6NNFQ2MSVX7XZKYAYSCX5QBYJ", "403"], 
+    ["http://davemolk.com/", "20180804152817", "-", "warc/revisit", "3I42H3S6NNFQ2MSVX7XZKYAYSCX5QBYJ", "484"], 
+    ["http://davemolk.com/", "20211129125131", "301", "text/html", "HLNR6AWVWYCU3YAENY3HYHLIPNWN66X7", "623"], 
+    ["https://davemolk.com/", "20220102011914", "200", "text/html", "YF7VO2OPAPYVGLWERDGH2PGEATLIU3VE", "3772"], 
+    ["http://davemolk.com/", "20230910121244", "301", "text/html", "HLNR6AWVWYCU3YAENY3HYHLIPNWN66X7", "751"], 
+    ["http://www.davemolk.com/", "20231031041844", "301", "text/html", "HLNR6AWVWYCU3YAENY3HYHLIPNWN66X7", "757"], 
+    ["https://davemolk.com/", "20231031041854", "200", "text/html", "Z5KULWQNG2ZM6S5FK46D5EIWEWUWF7QT", "4214"], 
+    ["http://www.davemolk.com/", "20231229124535", "301", "text/html", "HLNR6AWVWYCU3YAENY3HYHLIPNWN66X7", "753"], 
+    ["http://davemolk.com/", "20231229124537", "301", "text/html", "HLNR6AWVWYCU3YAENY3HYHLIPNWN66X7", "749"], 
+    ["https://davemolk.com/", "20231229124542", "200", "text/html", "Z5KULWQNG2ZM6S5FK46D5EIWEWUWF7QT", "4240"], 
+    ["http://www.davemolk.com/", "20240508234937", "301", "text/html", "HLNR6AWVWYCU3YAENY3HYHLIPNWN66X7", "760"], 
+    ["http://davemolk.com/", "20240508234939", "301", "text/html", "HLNR6AWVWYCU3YAENY3HYHLIPNWN66X7", "753"], 
+    ["https://davemolk.com/", "20240508234939", "200", "text/html", "Z5KULWQNG2ZM6S5FK46D5EIWEWUWF7QT", "4227"], 
+    ["https://davemolk.com/", "20240508234940", "-", "warc/revisit", "Z5KULWQNG2ZM6S5FK46D5EIWEWUWF7QT", "914"], 
+    ["https://davemolk.com/", "20240508234944", "-", "warc/revisit", "Z5KULWQNG2ZM6S5FK46D5EIWEWUWF7QT", "918"]
+]
