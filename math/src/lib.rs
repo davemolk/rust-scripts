@@ -13,6 +13,7 @@ mod rock_paper_scissor;
 mod guess_the_number;
 mod util;
 mod hide_and_seek;
+mod deck;
 mod trivia;
 
 #[derive(Parser, Debug)]
