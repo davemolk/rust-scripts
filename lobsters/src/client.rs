@@ -1,7 +1,6 @@
 use core::fmt;
 use std::collections::{self, HashMap};
 use std::io::{self, Write};
-use open;
 
 use serde_derive::Deserialize;
 use anyhow::{Result, anyhow};
@@ -81,10 +80,11 @@ impl LobsterClient {
         Ok(())
     }
     fn prompt_user(&self) -> Result<String> {
-        println!("type 'open <id>' to open the url in a browser, the <id> to see the post's comments, or press any key to quit");
+        println!("type 'open <id>' to open the url in a browser, the <id> to see the post's comments, or press any key to quit.");
+        println!("(you can enter a fragment of a post's title instead of the id)");
         let mut input = String::new();
         std::io::stdin().read_line(&mut input)?;
-        Ok(input.trim().to_string().to_lowercase())
+        Ok(input.trim().to_lowercase())
     }
     fn get_lobsters(&self, url: &str) -> Result<ApiResponse> {
         let resp = self.client.get(url)
@@ -94,27 +94,27 @@ impl LobsterClient {
         match resp.status() {
             reqwest::StatusCode::OK => {
                 let decoded = resp.json::<ApiResponse>()?;
-                return Ok(decoded);
+                Ok(decoded)
             }
             _ => {
-                return Err(anyhow!("got unexpected status code: {}", resp.status()));
+                Err(anyhow!("got unexpected status code: {}", resp.status()))
             }
         }
     }
-    fn get_url_from_user_input(&self, input: String, posts: &Vec<Post>) -> Result<String> {
-        let parts: Vec<&str> = input.split(" ").collect();
+    fn get_url_from_user_input(&self, input: String, posts: &[Post]) -> Result<String> {
+        let parts: Vec<&str> = input.split(' ').collect();
         // open browser
         if parts.len() > 1 {
             return self.get_browser_url(&input, posts);
         } 
         self.get_comments_url(&input, posts)
     }
-    fn get_browser_url(&self, input: &str, posts: &Vec<Post>) -> Result<String> {
+    fn get_browser_url(&self, input: &str, posts: &[Post]) -> Result<String> {
         if input.len() < 6 {
             return Err(anyhow!("to open a url in a browser, format as 'open s2zxwx' or 'open <fragment of the title>'"));
         }
         // skip "open" plus the space
-        let cropped = match input.char_indices().skip(5).next() {
+        let cropped = match input.char_indices().nth(5) {
             Some((pos, _)) => &input[pos..],
             None => "",
         };
@@ -123,7 +123,7 @@ impl LobsterClient {
         }
         self.check_for_matches(cropped, posts, false)
     }
-    fn check_for_matches(&self, input: &str, posts: &Vec<Post>, for_comments: bool) -> Result<String> {
+    fn check_for_matches(&self, input: &str, posts: &[Post], for_comments: bool) -> Result<String> {
         // check for multiple matches for the input
         let mut matches: Vec<&str> = vec![];
         let mut out = String::new();
@@ -131,17 +131,17 @@ impl LobsterClient {
             if post.title.to_lowercase().starts_with(input) {
                 matches.push(&post.title);
                 if for_comments {
-                    out = post.short_id.to_owned();
+                    post.short_id.clone_into(&mut out);
                 } else {
-                    out = post.url.to_owned();
+                    post.url.clone_into(&mut out);
                 }
             }
             if post.short_id.to_lowercase().starts_with(input) {
                 matches.push(&post.short_id);
                 if for_comments {
-                    out = post.short_id.to_owned();
+                    post.short_id.clone_into(&mut out);
                 } else {
-                    out = post.url.to_owned();
+                    post.url.clone_into(&mut out);
                 }
             }
         }
@@ -153,7 +153,7 @@ impl LobsterClient {
         }
         Ok(out)
     }
-    fn get_comments_url(&self, input: &str, posts: &Vec<Post>) -> Result<String>  {
+    fn get_comments_url(&self, input: &str, posts: &[Post]) -> Result<String>  {
         match self.check_for_matches(input, posts, true) {
             Ok(short_id) => Ok(format!("https://lobste.rs/s/{}.json", short_id)),
             Err(e) => Err(e),
