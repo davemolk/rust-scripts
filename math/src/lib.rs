@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::io::BufReader;
 use std::io;
 use std::fs::{File, OpenOptions};
+use std::path::PathBuf;
 use rand::Rng;
 use rand::seq::SliceRandom;
 use colored::Colorize;
@@ -9,14 +10,9 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, ValueEnum};
 
 mod ascii;
-mod rock_paper_scissor;
-mod guess_the_number;
 mod util;
-mod hide_and_seek;
-mod deck;
-mod trivia;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 pub struct Args {
     /// largest number to use (default for beginner is 10)
     /// 
@@ -48,6 +44,12 @@ pub struct Args {
     /// game difficulty
     #[arg(short, long, value_enum)]
     difficulty: Option<Difficulty>,
+    /// path to the game binary
+    /// (math will check current directory first,
+    /// then look for environment variables, and 
+    /// will check this flag last).
+    #[arg(long)]
+    pub game_binary: Option<String>,
 }
 
 fn parse_operations(arg: &str) -> Result<String> {
@@ -82,15 +84,6 @@ enum Difficulty {
 }
 
 #[derive(Debug)]
-enum Games {
-    RockPaperScissors,
-    NumberGuess,
-    HideAndSeek,
-    Trivia,
-    NoGame,
-}
-
-#[derive(Debug)]
 pub struct User {
     name: String,
     score: u16,
@@ -100,10 +93,11 @@ pub struct User {
     operations: Vec<Operations>,
     show_high_score: bool,
     difficulty: Difficulty,
+    games_path: PathBuf,
 }
 
 impl User {
-    pub fn new(args: Args) -> Self {
+    pub fn new(args: Args, games_path: PathBuf) -> Self {
         println!("what's your name?");
         let mut name = String::new();
         io::stdin().read_line(&mut name).unwrap();
@@ -132,7 +126,7 @@ impl User {
         if let Some(ref o) = args.operations {
             operations = Self::parse_operations(o);
         }
-        User{ args, name: cleaned_name, score: 0, high_scores, file_name: path, operations, show_high_score: true, difficulty }
+        User{ args, name: cleaned_name, score: 0, high_scores, file_name: path, operations, show_high_score: true, difficulty, games_path}
     }
     fn parse_operations(args: &str) -> Vec<Operations> {
         if args.is_empty() {
@@ -159,11 +153,6 @@ impl User {
         ops
     }
     pub fn play(&mut self) -> Result<()> {
-        trivia::run_trivia()?;
-        // hide_and_seek::run_hide_and_seek()?;
-
-
-
         if self.high_scores.contains_key(&self.name) {
             println!("\nwelcome back {}! let's see if you can beat your previous high score of {:?}\n", self.name, self.high_scores.get(&self.name).unwrap());
         } else {
@@ -308,7 +297,8 @@ impl User {
                     }
                 }
                 if self.score == 5 || self.score % 10 == 0{
-                    self.play_game()?;
+                    self.play_a_game(self.games_path.clone())?;
+                    // self.play_game()?;
                 }
                 return Ok(true)
             }
@@ -334,39 +324,18 @@ impl User {
             None => println!("great job! now your score is {}\n", self.score),
         }
     }
-    fn pick_game(&self) -> Result<Games> {
-        let (r, g, b) = util::color();
-        println!("{}", ascii::BONUS_GAME.truecolor(r, g, b));
-        println!("Enter 1 for Rock Paper Scissors");
-        println!("Enter 2 for Guess the Number");
-        println!("Enter 3 for Hide and Seek");
-        println!("Enter 4 for Trivia");
-        println!("Enter 5 for More Math Problems!");
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-        println!();
-        if input.trim().is_empty() {
-            return Ok(Games::NoGame);
-        }
-        let choice: Games = match input.trim() {
-            "1" => Games::RockPaperScissors,
-            "2" => Games::NumberGuess,
-            "3" => Games::HideAndSeek,
-            "4" => Games::Trivia,
-            _ => Games::NoGame,
-        };
-        Ok(choice)
-    }
-    fn play_game(&mut self) -> Result<()> {
+    fn play_a_game(&mut self, games_path: PathBuf) -> Result<()> {
         self.save_game()?;
-        let choice = self.pick_game()?;
-        match choice {
-            Games::RockPaperScissors => rock_paper_scissor::run_rps()?,
-            Games::NumberGuess => guess_the_number::run_number_guess()?,
-            Games::HideAndSeek => hide_and_seek::run_hide_and_seek()?,
-            Games::Trivia => trivia::run_trivia()?,
-            Games::NoGame => {},
-        }
+        let mut child = std::process::Command::new(games_path)
+            .stdin(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .spawn()?;
+
+            let status = child.wait()?;
+            if !status.success() {
+                return Err(anyhow!("Games program exited with error"));
+            }
         Ok(())
     }
 }

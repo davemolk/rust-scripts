@@ -6,8 +6,10 @@ use std::io;
 use colored::Colorize;
 use serde_derive::Deserialize;
 
-use crate::ascii;
-use crate::util;
+use super::{
+    ascii,
+    color,
+};
 
 #[derive(Debug)]
 struct Trivia {
@@ -118,7 +120,7 @@ pub fn run_trivia() -> Result<()> {
     let input = fs::read_to_string("./src/trivia.json")?;
     let questions: Vec<Question> = serde_json::from_str(&input)?;
     let mut game = Trivia::new(questions);
-    let (r, g, b) = util::color();
+    let (r, g, b) = color();
     println!("{}\n\n", ascii::TRIVIA.truecolor(r, g, b));
     if let Err(e) = game.play() {
         eprintln!("{}", e);

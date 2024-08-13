@@ -1,11 +1,14 @@
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use rand::{self, Rng};
 use std::fmt;
 use std::io;
 
-mod ascii;
+pub mod ascii;
+mod deck;
 mod guess_the_number;
 mod hide_and_seek;
+mod rock_paper_scissors;
+mod trivia;
 
 #[derive(Debug, Copy, Clone)]
 enum GameOptions {
@@ -59,11 +62,14 @@ impl Game {
     }
     pub fn run(&self) -> Result<()> {
         match self.prompt_user() {
-            // GameOptions::RockPaperScissors => "Rock Paper Scissors",
+            GameOptions::RockPaperScissors => rock_paper_scissors::run_rps()?,
             GameOptions::GuessTheNumber => guess_the_number::run_number_guess()?,
             GameOptions::HideAndSeek => hide_and_seek::run_hide_and_seek()?,
-            // GameOptions::Trivia => "Trivia",
-            // GameOptions::NoGame => "No Game",
+            GameOptions::Trivia => trivia::run_trivia()?,
+            GameOptions::Quit => {
+                println!("thanks for playing!");
+                return Ok(());
+            },
             _ => {}
         };
         Ok(())

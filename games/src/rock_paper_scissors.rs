@@ -4,8 +4,10 @@ use std::{io, thread};
 use std::time::Duration;
 use colored::Colorize;
 
-use crate::ascii;
-use crate::util;
+use super::{
+    ascii,
+    color,
+};
 
 struct RockPaperScissors {
     score: i32,
@@ -38,21 +40,21 @@ impl RockPaperScissors {
             Self::one_two_three(parsed, computer_choice);
             match Self::determine_winner(parsed, computer_choice) {
                 Outcome::Tie => {
-                    let (r, g, b) = util::color();
+                    let (r, g, b) = color();
                     println!("{}", "tie! let's play again".truecolor(r, g, b));
                 },
                 Outcome::Lose => {
                     println!("{}", "you lose :/".red());
                     self.lives -= 1;
                     if self.lives == 0 {
-                        let (r, g, b) = util::color();
+                        let (r, g, b) = color();
                         println!("{}", "see you again soon".truecolor(r, g, b));
                         break
                     }
                     println!("now you have {} lives left", self.lives)
                 },
                 Outcome::Win => {
-                    let (r, g, b) = util::color();
+                    let (r, g, b) = color();
                     println!("{}", "you win!".truecolor(r, g, b));
                     self.score += 1;
                     let points = if self.score == 1 { "point"} else { "points" };
@@ -63,7 +65,7 @@ impl RockPaperScissors {
         Ok(())
     }
     fn one_two_three(player: Choice, computer: Choice) {
-        let (r, g, b) = util::color();
+        let (r, g, b) = color();
         println!("{}", ascii::THREE.truecolor(r, g, b));
         thread::sleep(Duration::from_secs(1));
         // move cursor up 6 lines
@@ -153,7 +155,7 @@ impl RockPaperScissors {
 
 pub fn run_rps() -> Result<()> {
     let mut game = RockPaperScissors::new();
-    let (r, g, b) = util::color();
+    let (r, g, b) = color();
     println!("{}\n\n", ascii::ROCK_PAPER_SCISSORS.truecolor(r, g, b));
     game.play()?;
     Ok(())
