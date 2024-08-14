@@ -11,7 +11,12 @@ const URL_NEWEST: &str = "https://lobste.rs/newest.json";
 type ApiResponse = Vec<Post>;
 
 pub const USAGE: &str = r"Usage:
-lobsters hot    get the hottest posts (default is newest)
+lobsters        get the newest posts
+lobsters hot    get the hottest posts
+
+after getting the results, you can open a 
+browser and read an article or read the 
+comments in the terminal
 ";
 
 #[derive(Debug, Deserialize)]

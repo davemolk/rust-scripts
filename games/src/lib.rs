@@ -9,6 +9,7 @@ mod guess_the_number;
 mod hide_and_seek;
 mod rock_paper_scissors;
 mod trivia;
+mod war;
 
 #[derive(Debug, Copy, Clone)]
 enum GameOptions {
@@ -16,6 +17,7 @@ enum GameOptions {
     GuessTheNumber,
     HideAndSeek,
     Trivia,
+    War,
     Quit,
 }
 
@@ -26,6 +28,7 @@ impl GameOptions {
             GameOptions::GuessTheNumber,
             GameOptions::HideAndSeek,
             GameOptions::Trivia,
+            GameOptions::War,
             GameOptions::Quit,
         ]
     }
@@ -43,6 +46,7 @@ impl fmt::Display for GameOptions {
             GameOptions::GuessTheNumber => "Guess the Number",
             GameOptions::HideAndSeek => "Hide and Seek",
             GameOptions::Trivia => "Trivia",
+            GameOptions::War => "War",
             GameOptions::Quit => "Quit",
         };
         write!(f, "{}", s)
@@ -66,11 +70,11 @@ impl Game {
             GameOptions::GuessTheNumber => guess_the_number::run_number_guess()?,
             GameOptions::HideAndSeek => hide_and_seek::run_hide_and_seek()?,
             GameOptions::Trivia => trivia::run_trivia()?,
+            GameOptions::War => war::run_war()?,
             GameOptions::Quit => {
                 println!("thanks for playing!");
                 return Ok(());
             },
-            _ => {}
         };
         Ok(())
     }
@@ -96,8 +100,6 @@ impl Game {
         }
     }
 }
-
-
 
 pub fn color() -> (u8, u8, u8) {
     let r = rand::thread_rng().gen_range(0..=255);
