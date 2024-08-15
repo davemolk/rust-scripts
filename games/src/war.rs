@@ -40,8 +40,8 @@ impl War {
         let mut deck = Deck::new();
         deck.shuffle();
         War{
-            player: deck.cards[0..=25].to_vec().into(),
-            computer: deck.cards[26..].to_vec().into(),
+            player: VecDeque::from(deck.cards[0..=25].to_vec()),
+            computer: VecDeque::from(deck.cards[26..].to_vec()),
         }
     }
     fn run_game_loop(&mut self) {
@@ -61,10 +61,6 @@ impl War {
             println!("you win!!!");
             return false
         }
-
-        println!("player has {}", self.player.len());
-        println!("computer has {}", self.computer.len());
-
         let player_card = self.player.pop_front().expect("player should have a card for round");
         let computer_card = self.computer.pop_front().expect("computer should have a card for round");
         let mut winning_cards = Vec::new();
@@ -93,8 +89,12 @@ impl War {
         }
     }
     fn resolve_war(&mut self, mut winning_cards: Vec<Card>) {
+        let mut last_card = false;
         let player_card = match self.player.len() {
-            0 => winning_cards[0],
+            0 => {
+                last_card = true;
+                winning_cards[0]
+            },
             1 => self.player.pop_front().expect("player's last card"),
             _ => {
                 let discard = self.player.pop_front().expect("player should have spare cards");
@@ -103,7 +103,10 @@ impl War {
             },
         };
         let computer_card = match self.computer.len() {
-            0 => winning_cards[1],
+            0 => {
+                last_card = true;
+                winning_cards[1]
+            },
             1 => self.computer.pop_front().expect("computer's last card"),
             _ => {
                 let discard = self.computer.pop_front().expect("computer should have spare cards");
@@ -114,14 +117,20 @@ impl War {
         match player_card.rank.to_u8().cmp(&computer_card.rank.to_u8()) {
             Ordering::Greater => {
                 println!("you win the war, {} beats {}", player_card, computer_card);
-                winning_cards.push(player_card);
+                // card is already in winning_cards (was passed into this function)
+                if !last_card {
+                    winning_cards.push(player_card);
+                }
                 winning_cards.push(computer_card);
                 self.player.extend(winning_cards);
             },
             Ordering::Less => {
                 println!("you lose the war, {} gets beat by {}", player_card, computer_card);
                 winning_cards.push(player_card);
-                winning_cards.push(computer_card);
+                // card is already in winning_cards (was passed into this function)
+                if !last_card {
+                    winning_cards.push(computer_card);
+                }
                 self.computer.extend(winning_cards);
             },
             Ordering::Equal => {
@@ -140,4 +149,232 @@ pub fn run_war() -> Result<()> {
     println!("{}", ascii::WAR.truecolor(r, g, b));
     war.run_game_loop();
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::deck::Suit;
+
+    #[test]
+    fn test_new_game_initialization() {
+        let war = War::new();
+        assert_eq!(war.player.len(), 26);
+        assert_eq!(war.computer.len(), 26);
+    }
+    #[test]
+    fn test_play_round_player_win() {
+        let mut deck = Deck::new();
+        deck.cards = vec![
+            Card { suit: Suit::Hearts, rank: Rank::Five },
+            Card { suit: Suit::Hearts, rank: Rank::Six },
+            Card { suit: Suit::Clubs, rank: Rank::Three },
+            Card { suit: Suit::Clubs, rank: Rank::Four },
+        ];
+        let mut war = War {
+            player: VecDeque::from(deck.cards[0..2].to_vec()),
+            computer: VecDeque::from(deck.cards[2..].to_vec()),
+        };
+        war.play_round();
+        assert_eq!(war.player.len(), 3);
+        assert_eq!(war.computer.len(), 1);
+    }
+    #[test]
+    fn test_play_round_computer_win() {
+        let mut deck = Deck::new();
+        deck.cards = vec![
+            Card { suit: Suit::Hearts, rank: Rank::Three },
+            Card { suit: Suit::Hearts, rank: Rank::Four },
+            Card { suit: Suit::Clubs, rank: Rank::Five },
+            Card { suit: Suit::Clubs, rank: Rank::Six },
+        ];
+        let mut war = War {
+            player: VecDeque::from(deck.cards[0..2].to_vec()),
+            computer: VecDeque::from(deck.cards[2..].to_vec()),
+        };
+        war.play_round();
+        assert_eq!(war.player.len(), 1);
+        assert_eq!(war.computer.len(), 3);
+    }
+    #[test]
+    fn test_play_round_war() {
+        let mut deck = Deck::new();
+        deck.cards = vec![
+            Card { suit: Suit::Hearts, rank: Rank::Seven },
+            Card { suit: Suit::Hearts, rank: Rank::Eight },
+            Card { suit: Suit::Hearts, rank: Rank::Nine },
+            Card { suit: Suit::Clubs, rank: Rank::Seven },
+            Card { suit: Suit::Clubs, rank: Rank::Three },
+            Card { suit: Suit::Hearts, rank: Rank::Eight },
+        ];
+        let mut war = War {
+            player: VecDeque::from(deck.cards[0..=2].to_vec()),
+            computer: VecDeque::from(deck.cards[3..].to_vec()),
+        };
+        war.play_round();
+        assert_eq!(war.player.len(), 6);
+        assert_eq!(war.computer.len(), 0);
+    }
+    #[test]
+    fn test_play_round_war_no_cards_remaining_win() {
+        let mut deck = Deck::new();
+        deck.cards = vec![
+            Card { suit: Suit::Hearts, rank: Rank::Seven },
+            Card { suit: Suit::Clubs, rank: Rank::Seven },
+            Card { suit: Suit::Clubs, rank: Rank::Three },
+            Card { suit: Suit::Hearts, rank: Rank::Five },
+        ];
+        let mut war = War {
+            player: VecDeque::from(vec![deck.cards[0]]),
+            computer: VecDeque::from(deck.cards[1..].to_vec()),
+        };
+        war.play_round();
+        assert_eq!(war.player.len(), 4);
+        assert_eq!(war.computer.len(), 0);
+    }
+    #[test]
+    fn test_play_round_war_no_cards_remaining_lose() {
+        let mut deck = Deck::new();
+        deck.cards = vec![
+            Card { suit: Suit::Hearts, rank: Rank::Seven },
+            Card { suit: Suit::Clubs, rank: Rank::Seven },
+            Card { suit: Suit::Clubs, rank: Rank::Three },
+            Card { suit: Suit::Hearts, rank: Rank::Five },
+        ];
+        let mut war = War {
+            // swap from last test
+            computer: VecDeque::from(vec![deck.cards[0]]),
+            player: VecDeque::from(deck.cards[1..].to_vec()),
+        };
+        war.play_round();
+        assert_eq!(war.player.len(), 0);
+        assert_eq!(war.computer.len(), 4);
+    }
+    #[test]
+    fn test_play_round_war_one_card_remaining_win() {
+        let mut deck = Deck::new();
+        deck.cards = vec![
+            Card { suit: Suit::Hearts, rank: Rank::Seven },
+            Card { suit: Suit::Hearts, rank: Rank::Six },
+            Card { suit: Suit::Clubs, rank: Rank::Seven },
+            // make sure this is skipped correctly
+            Card { suit: Suit::Clubs, rank: Rank::Nine },
+            Card { suit: Suit::Hearts, rank: Rank::Five },
+        ];
+        let mut war = War {
+            player: VecDeque::from(deck.cards[0..=1].to_vec()),
+            computer: VecDeque::from(deck.cards[2..].to_vec()),
+        };
+        war.play_round();
+        assert_eq!(war.player.len(), 5);
+        assert_eq!(war.computer.len(), 0);
+    }
+    #[test]
+    fn test_play_round_war_one_card_remaining_lose() {
+        let mut deck = Deck::new();
+        deck.cards = vec![
+            Card { suit: Suit::Hearts, rank: Rank::Seven },
+            Card { suit: Suit::Hearts, rank: Rank::Six },
+            Card { suit: Suit::Clubs, rank: Rank::Seven },
+            Card { suit: Suit::Clubs, rank: Rank::Nine },
+            Card { suit: Suit::Hearts, rank: Rank::Five },
+        ];
+        let mut war = War {
+            computer: VecDeque::from(deck.cards[0..=1].to_vec()),
+            player: VecDeque::from(deck.cards[2..].to_vec()),
+        };
+        war.play_round();
+        assert_eq!(war.player.len(), 0);
+        assert_eq!(war.computer.len(), 5);
+    }
+    #[test]
+    fn test_play_round_war_two_cards_remaining_win() {
+        let mut deck = Deck::new();
+        deck.cards = vec![
+            Card { suit: Suit::Hearts, rank: Rank::Seven },
+            Card { suit: Suit::Hearts, rank: Rank::Six },
+            Card { suit: Suit::Hearts, rank: Rank::Nine },
+            Card { suit: Suit::Clubs, rank: Rank::Seven },
+            Card { suit: Suit::Clubs, rank: Rank::Nine },
+            Card { suit: Suit::Hearts, rank: Rank::Five },
+        ];
+        let mut war = War {
+            player: VecDeque::from(deck.cards[0..=2].to_vec()),
+            computer: VecDeque::from(deck.cards[3..].to_vec()),
+        };
+        war.play_round();
+        assert_eq!(war.player.len(), 6);
+        assert_eq!(war.computer.len(), 0);
+    }
+    #[test]
+    fn test_play_round_war_two_cards_remaining_lose() {
+        let mut deck = Deck::new();
+        deck.cards = vec![
+            Card { suit: Suit::Hearts, rank: Rank::Seven },
+            Card { suit: Suit::Hearts, rank: Rank::Six },
+            Card { suit: Suit::Hearts, rank: Rank::Nine },
+            Card { suit: Suit::Clubs, rank: Rank::Seven },
+            Card { suit: Suit::Clubs, rank: Rank::Nine },
+            Card { suit: Suit::Hearts, rank: Rank::Five },
+        ];
+        let mut war = War {
+            computer: VecDeque::from(deck.cards[0..=2].to_vec()),
+            player: VecDeque::from(deck.cards[3..].to_vec()),
+        };
+        war.play_round();
+        assert_eq!(war.player.len(), 0);
+        assert_eq!(war.computer.len(), 6);
+    }
+    #[test]
+    fn test_play_round_double_win() {
+        let mut deck = Deck::new();
+        deck.cards = vec![
+            Card { suit: Suit::Hearts, rank: Rank::Seven },
+            Card { suit: Suit::Hearts, rank: Rank::Six },
+            Card { suit: Suit::Hearts, rank: Rank::Nine },
+            Card { suit: Suit::Hearts, rank: Rank::Four },
+            Card { suit: Suit::Hearts, rank: Rank::King },
+            Card { suit: Suit::Clubs, rank: Rank::Seven },
+            Card { suit: Suit::Hearts, rank: Rank::Five },
+            Card { suit: Suit::Clubs, rank: Rank::Nine },
+            Card { suit: Suit::Hearts, rank: Rank::Two },
+            Card { suit: Suit::Hearts, rank: Rank::Three },
+            Card { suit: Suit::Hearts, rank: Rank::Queen },
+        ];
+        let mut war = War {
+            player: VecDeque::from(deck.cards[0..=4].to_vec()),
+            computer: VecDeque::from(deck.cards[5..].to_vec()),
+        };
+        war.play_round();
+        assert_eq!(war.player.len(), 10);
+        assert_eq!(war.computer.len(), 1);
+    }
+    #[test]
+    fn test_play_round_double_war_lose() {
+        let mut deck = Deck::new();
+        deck.cards = vec![
+            Card { suit: Suit::Hearts, rank: Rank::Seven },
+            Card { suit: Suit::Hearts, rank: Rank::Six },
+            Card { suit: Suit::Hearts, rank: Rank::Nine },
+            Card { suit: Suit::Hearts, rank: Rank::Four },
+            Card { suit: Suit::Hearts, rank: Rank::King },
+            Card { suit: Suit::Hearts, rank: Rank::Jack },
+            Card { suit: Suit::Spades, rank: Rank::King },
+            Card { suit: Suit::Diamonds, rank: Rank::King },
+            Card { suit: Suit::Clubs, rank: Rank::Seven },
+            Card { suit: Suit::Hearts, rank: Rank::Five },
+            Card { suit: Suit::Clubs, rank: Rank::Nine },
+            Card { suit: Suit::Hearts, rank: Rank::Two },
+            Card { suit: Suit::Hearts, rank: Rank::Three },
+            Card { suit: Suit::Hearts, rank: Rank::Queen },
+            Card { suit: Suit::Diamonds, rank: Rank::Queen },
+        ];
+        let mut war = War {
+            computer: VecDeque::from(deck.cards[0..=7].to_vec()),
+            player: VecDeque::from(deck.cards[8..].to_vec()),
+        };
+        war.play_round();
+        assert_eq!(war.player.len(), 2);
+        assert_eq!(war.computer.len(), 13);
+    }
 }
