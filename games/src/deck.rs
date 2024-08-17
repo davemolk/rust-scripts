@@ -28,7 +28,7 @@ pub enum Rank {
     Ace,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
+#[derive(Clone, Copy, PartialEq, Eq, Ord, PartialOrd)]
 pub struct Card {
     pub suit: Suit,
     pub rank: Rank,
@@ -39,11 +39,83 @@ pub struct Deck {
     pub cards: Vec<Card>,
 }
 
-impl fmt::Display for Card {
+impl fmt::Debug for Card {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?} of {:?}", self.rank, self.suit)
+        write!(
+            f,
+            "{:?} of {:?}",
+            self.rank,
+            self.suit
+        )
     }
 }
+
+impl fmt::Display for Card {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let rank = match self.rank {
+            Rank::Two => "2",
+            Rank::Three => "3",
+            Rank::Four => "4",
+            Rank::Five => "5",
+            Rank::Six => "6",
+            Rank::Seven => "7",
+            Rank::Eight => "8",
+            Rank::Nine => "9",
+            Rank::Ten => "10",
+            Rank::Jack => "J",
+            Rank::Queen => "Q",
+            Rank::King => "K",
+            Rank::Ace => "A",
+        };
+        let suit = match self.suit {
+            Suit::Hearts => "♥",
+            Suit::Spades => "♠",
+            Suit::Clubs => "♣",
+            Suit::Diamonds => "♦",
+        };
+        write!(
+            f,
+            "┌─────┐\n\
+             │{}    │\n\
+             │  {}  │\n\
+             │    {}│\n\
+             └─────┘",
+            rank,
+            suit,
+            rank
+        )
+    }
+}
+
+impl Card {
+    pub fn emoji(&self) -> String {
+        let rank = match self.rank {
+            Rank::Two => "2",
+            Rank::Three => "3",
+            Rank::Four => "4",
+            Rank::Five => "5",
+            Rank::Six => "6",
+            Rank::Seven => "7",
+            Rank::Eight => "8",
+            Rank::Nine => "9",
+            Rank::Ten => "10",
+            Rank::Jack => "J",
+            Rank::Queen => "Q",
+            Rank::King => "K",
+            Rank::Ace => "A",
+        };
+
+        let suit = match self.suit {
+            Suit::Hearts => "♥",
+            Suit::Spades => "♠",
+            Suit::Clubs => "♣",
+            Suit::Diamonds => "♦",
+        };
+
+        format!("{rank} of {suit}")
+    }
+}
+
 
 impl Deck {
     pub fn new() -> Self {

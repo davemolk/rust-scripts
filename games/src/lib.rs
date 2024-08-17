@@ -36,6 +36,7 @@ impl GameOptions {
         for (i, game) in GameOptions::all().iter().enumerate() {
             println!("{}: {}", i+1, game);
         }
+        println!();
     }
 }
 

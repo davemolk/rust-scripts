@@ -1,6 +1,6 @@
 use anyhow::Result;
 use colored::Colorize;
-use std::cmp::Ordering;
+use std::{cmp::Ordering, io};
 use std::collections::VecDeque;
 
 use super::{
@@ -13,6 +13,12 @@ use super::{
 struct War {
     player: VecDeque<Card>,
     computer: VecDeque<Card>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PlayerChoice {
+    PlayCard,
+    Quit,
 }
 
 impl Rank {
@@ -52,35 +58,62 @@ impl War {
             }
         }
     }
+    fn get_input(&self) -> Result<PlayerChoice> {
+        println!("Enter 1 to play a card or 2 to quit");
+        loop {
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            let choice = input.trim().parse::<u8>()?;
+            match choice {
+                1 => {
+                    return Ok(PlayerChoice::PlayCard);
+                },
+                2 => {
+                    return Ok(PlayerChoice::Quit);
+                },
+                _ => {
+                    eprintln!("please try again");
+                    continue
+                }
+            }
+        }
+    }
     fn play_round(&mut self) -> bool {
         if self.player.is_empty() {
-            println!("oh no, you lose :/");
+            println!("oh no, you lose :/\n");
             return false
         } 
         if self.computer.is_empty() {
-            println!("you win!!!");
+            println!("you win!!!\n");
             return false
+        }
+        match self.get_input().expect("player should have made a choice") {
+            PlayerChoice::Quit => {
+                println!("thanks for playing!\n");
+                return false;
+            }
+            PlayerChoice::PlayCard => {},
         }
         let player_card = self.player.pop_front().expect("player should have a card for round");
         let computer_card = self.computer.pop_front().expect("computer should have a card for round");
         let mut winning_cards = Vec::new();
         match player_card.rank.to_u8().cmp(&computer_card.rank.to_u8()) {
             Ordering::Greater => {
-                println!("you win, {} beats {}", player_card, computer_card);
+                println!("you win, {} beats {}\n", player_card, computer_card);
                 winning_cards.push(player_card);
                 winning_cards.push(computer_card);
                 self.player.extend(winning_cards);
                 true
             },
             Ordering::Less => {
-                println!("you lose, {} gets beat by {}", player_card, computer_card);
+                println!("you lose, {} gets beat by {}\n", player_card, computer_card);
                 winning_cards.push(player_card);
                 winning_cards.push(computer_card);
                 self.computer.extend(winning_cards);
                 true
             },
             Ordering::Equal => {
-                println!("uh oh, time for war!");
+                println!("uh oh, time for war!\n");
                 winning_cards.push(player_card);
                 winning_cards.push(computer_card);
                 self.resolve_war(winning_cards);
@@ -116,7 +149,7 @@ impl War {
         };
         match player_card.rank.to_u8().cmp(&computer_card.rank.to_u8()) {
             Ordering::Greater => {
-                println!("you win the war, {} beats {}", player_card, computer_card);
+                println!("you win the war, {} beats {}\n", player_card, computer_card);
                 // card is already in winning_cards (was passed into this function)
                 if !last_card {
                     winning_cards.push(player_card);
@@ -125,7 +158,7 @@ impl War {
                 self.player.extend(winning_cards);
             },
             Ordering::Less => {
-                println!("you lose the war, {} gets beat by {}", player_card, computer_card);
+                println!("you lose the war, {} gets beat by {}\n", player_card, computer_card);
                 winning_cards.push(player_card);
                 // card is already in winning_cards (was passed into this function)
                 if !last_card {
@@ -134,7 +167,7 @@ impl War {
                 self.computer.extend(winning_cards);
             },
             Ordering::Equal => {
-                println!("time for another war!");
+                println!("time for another war!\n");
                 winning_cards.push(player_card);
                 winning_cards.push(computer_card);
                 self.resolve_war(winning_cards);
