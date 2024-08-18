@@ -72,6 +72,7 @@ impl Game {
     }
     fn run_game_loop(&mut self) {
         println!("search through the house and see what you find...");
+        println!("listen for hints that you're getting close!");
         println!("press q at any time to quit\n\n");
         if let Err(e) = self.play() {
             eprintln!("{}", e);
@@ -80,7 +81,7 @@ impl Game {
     }
     fn play(&mut self) -> Result<()> {
         // todo: remove secret
-        println!("{:?}", self.hiding_spot);
+        // println!("{:?}", self.hiding_spot);
         if self.current_floor == self.hiding_spot.floor {
             self.correct_floor();
         }

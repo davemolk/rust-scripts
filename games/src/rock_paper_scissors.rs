@@ -33,6 +33,7 @@ impl RockPaperScissors {
         RockPaperScissors { score: 0, lives: 3 }
     }
     fn play(&mut self) -> Result<()> {
+        println!("enter rock, paper, or scissors (or just the first initial). good luck!!!");
         loop {
             let computer_choice = Self::computer_chooses();
             let user_choice = Self::prompt_user()?;
@@ -48,17 +49,17 @@ impl RockPaperScissors {
                     self.lives -= 1;
                     if self.lives == 0 {
                         let (r, g, b) = color();
-                        println!("{}", "see you again soon".truecolor(r, g, b));
+                        println!("you ended the game with {} points. {}", self.score, "see you again soon".truecolor(r, g, b));
                         break
                     }
-                    println!("now you have {} lives left", self.lives)
+                    println!("you have {} lives left. enter your next choice", self.lives)
                 },
                 Outcome::Win => {
                     let (r, g, b) = color();
                     println!("{}", "you win!".truecolor(r, g, b));
                     self.score += 1;
                     let points = if self.score == 1 { "point"} else { "points" };
-                    println!("you have {} {}. let's play!", self.score, points);
+                    println!("you have {} {}. enter your next choice!", self.score, points);
                 }
             }
         }
@@ -113,7 +114,6 @@ impl RockPaperScissors {
         }
     }
     fn prompt_user() -> Result<String> {
-        println!("enter rock, paper, or scissors...good luck!\n");
         let mut user_rps = String::new();
         io::stdin().read_line(&mut user_rps)?;
         if user_rps.trim().is_empty() {

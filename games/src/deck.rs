@@ -76,12 +76,14 @@ impl fmt::Display for Card {
         write!(
             f,
             "┌─────┐\n\
-             │{}    │\n\
+             │{}{}   │\n\
              │  {}  │\n\
-             │    {}│\n\
+             │  {}{} │\n\
              └─────┘",
+            if rank.len() == 2 {""} else {" "},
             rank,
             suit,
+            if rank.len() == 2 {""} else {" "},
             rank
         )
     }

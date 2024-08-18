@@ -1,6 +1,7 @@
 use anyhow::Result;
 use colored::Colorize;
-use std::{cmp::Ordering, io};
+use std::{cmp::Ordering, io, thread};
+use std::time::Duration;
 use std::collections::VecDeque;
 
 use super::{
@@ -63,6 +64,7 @@ impl War {
         loop {
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
+            println!();
             let choice = input.trim().parse::<u8>()?;
             match choice {
                 1 => {
@@ -72,7 +74,7 @@ impl War {
                     return Ok(PlayerChoice::Quit);
                 },
                 _ => {
-                    eprintln!("please try again");
+                    eprintln!("input not recognized, please try again");
                     continue
                 }
             }
@@ -97,22 +99,24 @@ impl War {
         let player_card = self.player.pop_front().expect("player should have a card for round");
         let computer_card = self.computer.pop_front().expect("computer should have a card for round");
         let mut winning_cards = Vec::new();
+        self.play_cards(&player_card, &computer_card);
         match player_card.rank.to_u8().cmp(&computer_card.rank.to_u8()) {
             Ordering::Greater => {
-                println!("you win, {} beats {}\n", player_card, computer_card);
+                println!("you win, {:?} beats {:?}. only {} more cards to win!\n", player_card, computer_card, 52 - self.player.len());
                 winning_cards.push(player_card);
                 winning_cards.push(computer_card);
                 self.player.extend(winning_cards);
                 true
             },
             Ordering::Less => {
-                println!("you lose, {} gets beat by {}\n", player_card, computer_card);
+                println!("you lose, {:?} gets beat by {:?}. just {} more cards to win!\n", player_card, computer_card, 52 - self.player.len());
                 winning_cards.push(player_card);
                 winning_cards.push(computer_card);
                 self.computer.extend(winning_cards);
                 true
             },
             Ordering::Equal => {
+                thread::sleep(Duration::from_millis(300));
                 println!("uh oh, time for war!\n");
                 winning_cards.push(player_card);
                 winning_cards.push(computer_card);
@@ -147,9 +151,10 @@ impl War {
                 self.computer.pop_front().expect("computer's card")
             },
         };
+        self.play_cards(&player_card, &computer_card);
         match player_card.rank.to_u8().cmp(&computer_card.rank.to_u8()) {
             Ordering::Greater => {
-                println!("you win the war, {} beats {}\n", player_card, computer_card);
+                println!("you win the war, {:?} beats {:?}. only {} more cards to win!\n", player_card, computer_card, 52 - self.player.len());
                 // card is already in winning_cards (was passed into this function)
                 if !last_card {
                     winning_cards.push(player_card);
@@ -158,7 +163,7 @@ impl War {
                 self.player.extend(winning_cards);
             },
             Ordering::Less => {
-                println!("you lose the war, {} gets beat by {}\n", player_card, computer_card);
+                println!("you lose the war, {:?} gets beat by {:?}. just {} more cards to win!\n", player_card, computer_card, 52 - self.player.len());
                 winning_cards.push(player_card);
                 // card is already in winning_cards (was passed into this function)
                 if !last_card {
@@ -173,6 +178,12 @@ impl War {
                 self.resolve_war(winning_cards);
             }
         }
+    }
+    fn play_cards(&self, player_card: &Card, computer_card: &Card) {
+        thread::sleep(Duration::from_millis(300));
+        println!("your card:\n\n{}\n\n", player_card);
+        thread::sleep(Duration::from_millis(800));
+        println!("computer's card:\n\n{}\n", computer_card);
     }
 }
 

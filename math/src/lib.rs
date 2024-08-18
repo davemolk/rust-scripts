@@ -10,7 +10,6 @@ use anyhow::{anyhow, Result};
 use clap::{Parser, ValueEnum};
 
 mod ascii;
-mod util;
 
 #[derive(Parser, Debug, Clone)]
 pub struct Args {
@@ -271,7 +270,7 @@ impl User {
                 continue
             }
             if guess.trim().chars().nth(0).unwrap() == 'q' {
-                let (r, g, b) = util::color();
+                let (r, g, b) = color();
                 println!("{}", ascii::THANKS_FOR_PLAYING.truecolor(r, g, b));
                 // save current score
                 self.save_game()?;
@@ -290,7 +289,7 @@ impl User {
                 if self.show_high_score {
                     if let Some(score) = self.high_scores.get(&self.name) {
                         if self.score > *score {
-                            let (r, g, b) = util::color();
+                            let (r, g, b) = color();
                             println!("{}", ascii::NEW_HIGH_SCORE.truecolor(r, g, b));
                             self.show_high_score = false;
                         }
@@ -317,7 +316,7 @@ impl User {
         }
     }
     fn praise(&self) {
-        let (r, g, b) = util::color();
+        let (r, g, b) = color();
         let praise = vec!["good job!", "awesome!", "right on!", "cowabunga!", "gnarly!", "phat!", "swell!", "bodacious!", "party on!", "sizzling!", "dope!", "party time!", "super!", "excellent!", "you got it!", "you rock!", "you're awesome!", "you're the best!", "rock on!", "you're doing great!", "kick butt!", "yay!", "hurray!", "oh boy!"];
         match praise.choose(&mut rand::thread_rng()) {
             Some(c) => println!("{}{} {}\n", c.truecolor(r, g, b), " now your score is".truecolor(r, g, b), self.score),
@@ -338,4 +337,12 @@ impl User {
             }
         Ok(())
     }
+}
+
+
+pub fn color() -> (u8, u8, u8) {
+    let r = rand::thread_rng().gen_range(0..=255);
+    let g = rand::thread_rng().gen_range(0..=255);
+    let b = rand::thread_rng().gen_range(0..=255);
+    (r, g, b)
 }
