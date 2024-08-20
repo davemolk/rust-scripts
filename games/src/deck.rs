@@ -118,6 +118,26 @@ impl Card {
     }
 }
 
+pub struct CardBack {}
+
+impl CardBack {
+    pub fn new() -> Self {
+        CardBack {}
+    }
+}
+
+impl fmt::Display for CardBack {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "┌─────┐\n\
+             │xxxxx│\n\
+             │xxxxx│\n\
+             │xxxxx│\n\
+             └─────┘",
+        )
+    }
+}
 
 impl Deck {
     pub fn new() -> Self {

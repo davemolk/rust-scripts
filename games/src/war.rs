@@ -4,6 +4,8 @@ use std::{cmp::Ordering, io, thread};
 use std::time::Duration;
 use std::collections::VecDeque;
 
+use crate::deck;
+
 use super::{
     color,
     deck::{Card, Deck, Rank},
@@ -65,7 +67,11 @@ impl War {
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
             println!();
-            let choice = input.trim().parse::<u8>()?;
+            if let Err(_) = input.trim().parse::<u8>() {
+                eprintln!("input not recognized, please try again");
+                    continue
+            }
+            let choice = input.trim().parse::<u8>().expect("unexpected invalid input");
             match choice {
                 1 => {
                     return Ok(PlayerChoice::PlayCard);
@@ -102,21 +108,20 @@ impl War {
         self.play_cards(&player_card, &computer_card);
         match player_card.rank.to_u8().cmp(&computer_card.rank.to_u8()) {
             Ordering::Greater => {
-                println!("you win, {:?} beats {:?}. only {} more cards to win!\n", player_card, computer_card, 52 - self.player.len());
                 winning_cards.push(player_card);
                 winning_cards.push(computer_card);
                 self.player.extend(winning_cards);
+                println!("you win, {:?} beats {:?}. only {} more cards to win!\n", player_card, computer_card, self.computer.len());
                 true
             },
             Ordering::Less => {
-                println!("you lose, {:?} gets beat by {:?}. just {} more cards to win!\n", player_card, computer_card, 52 - self.player.len());
                 winning_cards.push(player_card);
                 winning_cards.push(computer_card);
                 self.computer.extend(winning_cards);
+                println!("you lose, {:?} gets beat by {:?}. just {} more cards to win!\n", player_card, computer_card, self.computer.len());
                 true
             },
             Ordering::Equal => {
-                thread::sleep(Duration::from_millis(300));
                 println!("uh oh, time for war!\n");
                 winning_cards.push(player_card);
                 winning_cards.push(computer_card);
@@ -154,36 +159,43 @@ impl War {
         self.play_cards(&player_card, &computer_card);
         match player_card.rank.to_u8().cmp(&computer_card.rank.to_u8()) {
             Ordering::Greater => {
-                println!("you win the war, {:?} beats {:?}. only {} more cards to win!\n", player_card, computer_card, 52 - self.player.len());
                 // card is already in winning_cards (was passed into this function)
                 if !last_card {
                     winning_cards.push(player_card);
                 }
                 winning_cards.push(computer_card);
                 self.player.extend(winning_cards);
+                println!("you win the war, {:?} beats {:?}. only {} more cards to win!\n", player_card, computer_card, self.computer.len());
             },
             Ordering::Less => {
-                println!("you lose the war, {:?} gets beat by {:?}. just {} more cards to win!\n", player_card, computer_card, 52 - self.player.len());
                 winning_cards.push(player_card);
                 // card is already in winning_cards (was passed into this function)
                 if !last_card {
                     winning_cards.push(computer_card);
                 }
                 self.computer.extend(winning_cards);
+                println!("you lose the war, {:?} gets beat by {:?}. just {} more cards to win!\n", player_card, computer_card, self.computer.len());
             },
             Ordering::Equal => {
-                println!("time for another war!\n");
                 winning_cards.push(player_card);
                 winning_cards.push(computer_card);
                 self.resolve_war(winning_cards);
+                println!("time for another war!\n");
             }
         }
     }
     fn play_cards(&self, player_card: &Card, computer_card: &Card) {
-        thread::sleep(Duration::from_millis(300));
-        println!("your card:\n\n{}\n\n", player_card);
-        thread::sleep(Duration::from_millis(800));
-        println!("computer's card:\n\n{}\n", computer_card);
+        println!("your card:\n\n{}\n\n", deck::CardBack::new());
+        println!("computer's card:\n\n{}\n\n", deck::CardBack::new());
+        thread::sleep(Duration::from_secs(2));
+        print!("\x1B[19A");
+        for _ in 0..19 {
+            print!("\x1B[K");
+            println!();
+        }
+        print!("\x1B[18A");
+        println!("your card: \n\n{}\n\n", player_card);
+        println!("computer's card:\n\n{}\n\n", computer_card);
     }
 }
 
