@@ -1,3 +1,4 @@
+use rand::thread_rng;
 use serde_derive::Deserialize;
 use std::collections::HashMap;
 use std::thread::sleep;
@@ -14,7 +15,7 @@ use super::{
 #[derive(Debug, Deserialize)]
 struct Config {
     // key is floor name
-    map: HashMap<String, Floor>,
+    house_map: HashMap<String, Floor>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -42,6 +43,49 @@ struct ActualHidingSpot {
     floor: String
 }
 
+#[derive(Debug, Clone, PartialEq)]
+enum Difficulty {
+    Easy,
+    Medium,
+    MediumAdvanced,
+    Advanced,
+    Expert,
+    Custom,
+}
+
+impl Difficulty {
+    fn print_difficulties() {
+        let choices = [
+            Difficulty::Easy,
+            Difficulty::Medium,
+            Difficulty::MediumAdvanced,
+            Difficulty::Advanced,
+            Difficulty::Expert,
+            Difficulty::Custom,
+        ];
+        for (i, d) in choices.iter().enumerate() {
+            println!("{}: {:?}", i+1, d);
+        }
+    }
+}
+
+const ALL_FLOORS: [&str; 3] = ["First Floor", "Second Floor", "Basement Floor"];
+const ALL_ROOMS: [&str; 7] = [
+    "Bedroom", "Bathroom", "Office", "Kitchen", "Playroom", "Dining Room", "Closet",
+];
+
+fn get_room_hiding_spots() -> HashMap<&'static str, Vec<&'static str>> {
+    let mut map = HashMap::new();
+    map.insert("Bedroom", vec!["under the covers", "under the bed", "in the bed", "behind the pillow", "under the pillow", "in the closet", "behind the chair", "under the chair"]);
+    map.insert("Bathroom", vec!["behind the tub", "on the potty", "in the tub", "in the potty", "under the sink", "behind the towels"]);
+    map.insert("Office", vec!["under the desk", "under the table", "behind the lamp", "on the chair", "under the chair", "behind the chair", "in the closet"]);
+    map.insert("Kitchen", vec!["in the fridge", "in the cupboard", "under the sink", "in the sink", "in the freezer", "in the dishwasher"]);
+    map.insert("Playroom", vec!["in the toy chest", "behind the toy chest", "in the toy truck", "among the toy trains", "among the stuffies"]);
+    map.insert("Dining Room", vec!["under the table", "on the table", "under a chair", "on a chair", "behind a chair", "behind the plants"]);
+    map.insert("Closet", vec!["behind the clothes", "under the clothes", "among the shoes", "behind the shoes", "behind the towels", "behind the coats"]);
+    map
+}
+
 struct Game {
     config: Config,
     hiding_spot: ActualHidingSpot,
@@ -57,8 +101,8 @@ struct Game {
 impl Game {
     fn new(hiding_spot: ActualHidingSpot, config: Config) -> Self {
         // we've validated that there are at least two floors, so unwrap is ok
-        let current_floor = config.map.values().next().expect("no floor");
-        let floors: Vec<String> = config.map.keys().cloned().collect();
+        let current_floor = config.house_map.values().next().expect("no floor");
+        let floors: Vec<String> = config.house_map.keys().cloned().collect();
         Game {
             hiding_spot,
             current_floor: current_floor.name.to_owned(),
@@ -156,7 +200,7 @@ impl Game {
         Ok(())
     }
     fn search_floor(&mut self) -> Result<bool> {
-        let available_rooms = self.config.map.get(&self.current_floor).unwrap();
+        let available_rooms = self.config.house_map.get(&self.current_floor).unwrap();
         println!("\nenter the number of the room you want to search");
         println!("enter d to search a different floor\n");
         for (idx, room) in available_rooms.rooms.iter().enumerate() {
@@ -259,14 +303,10 @@ fn load_config() -> Result<Config> {
 }
 fn validate_config(config: &Config) -> Result<()> {
     // need a map
-    if config.map.is_empty() {
+    if config.house_map.is_empty() {
         return Err(anyhow!("config can't be empty"));
     }
-    // need multiple floors
-    if config.map.len() < 2 {
-        return Err(anyhow!("need at least two floors"));
-    }
-    for (key, floor) in &config.map {
+    for (key, floor) in &config.house_map {
         // no empty rooms
         if floor.rooms.is_empty() {
             return Err(anyhow!("{} needs some rooms", key));
@@ -285,7 +325,7 @@ fn validate_config(config: &Config) -> Result<()> {
 }
 fn generate_hiding_spot(config: &Config) -> Option<ActualHidingSpot> {
     let mut rng = rand::thread_rng(); 
-    let random_floor = config.map.values().choose(&mut rng)?;
+    let random_floor = config.house_map.values().choose(&mut rng)?;
     let random_room = random_floor.rooms.choose(&mut rng)?;
     let random_hiding_spot = random_room.hiding_spots.choose(&mut rng)?;
     Some(ActualHidingSpot{
@@ -294,8 +334,86 @@ fn generate_hiding_spot(config: &Config) -> Option<ActualHidingSpot> {
         floor: random_floor.name.to_owned(),
     })
 }
+fn get_difficulty_level() -> Result<Difficulty> {
+    println!("pick a difficulty level");
+    Difficulty::print_difficulties();
+    loop {
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).expect("failed to read input");
+        println!();
+        let choice = match input.trim().parse::<usize>() {
+            Err(_) => {
+                eprintln!("invalid input, please try again");
+                continue
+            },
+            Ok(num) => num,
+        };
+        if choice > 6 {
+            eprintln!("invalid input, please try again");
+            continue
+        }
+        match choice {
+            1 => return Ok(Difficulty::Easy),
+            2 => return Ok(Difficulty::Medium),
+            3 => return Ok(Difficulty::MediumAdvanced),
+            4 => return Ok(Difficulty::Advanced),
+            5 => return Ok(Difficulty::Expert),
+            6 => return Ok(Difficulty::Custom),
+            _ => {
+                eprintln!("invalid input, please try again");
+                continue
+            },
+        };
+    }
+}
+fn get_config_for_level(difficulty_level: Difficulty) -> Result<Config> {
+    let config = match difficulty_level {
+        Difficulty::Easy => create_map(1, 3, 2),
+        Difficulty::Medium => create_map(1, 5, 3),
+        Difficulty::MediumAdvanced => create_map(2, 3, 3),
+        Difficulty::Advanced => create_map(2, 5, 4),
+        Difficulty::Expert => create_map(3, 5, 4),
+        Difficulty::Custom => load_config()?,
+    };
+    // prob validate here
+    if difficulty_level == Difficulty::Custom {
+        validate_config(&config)?;
+    }
+    Ok(config)
+}
+fn create_map(num_floors: usize, num_rooms: usize, num_hiding_spots: usize) -> Config {
+    let mut rng = thread_rng();
+    let mut map  = HashMap::new();
+    let room_hiding_spots = get_room_hiding_spots(); 
+
+    for floor_name in ALL_FLOORS.choose_multiple(&mut rng, num_floors) {
+        let floor_name = floor_name.to_string();
+        let mut rooms = vec![];
+
+        let mut all_rooms = ALL_ROOMS.to_vec();
+        for _ in 0..num_rooms {
+            let room_name = all_rooms.pop().expect("need a room");
+            let hiding_spot_options = room_hiding_spots.get(room_name).expect("can't get hiding spot options");
+            let hiding_spots = (0..num_hiding_spots)
+                .map(|_| HidingSpot {
+                    name: hiding_spot_options.choose(&mut rng).expect("need a hiding spot").to_string(),
+                })
+                .collect();
+            rooms.push(Room {
+                name: room_name.to_string(),
+                hiding_spots,
+            });
+        }
+        map.insert(floor_name.clone(), Floor {
+            name: floor_name.clone(),
+            rooms,
+        });
+    }
+    Config { house_map: map }
+}
 pub fn run_hide_and_seek() -> Result<()> {
-    let config = load_config()?;
+    let difficulty_level = get_difficulty_level()?;
+    let config = get_config_for_level(difficulty_level)?;
     validate_config(&config)?;
     let hiding_spot = match generate_hiding_spot(&config) {
         Some(h) => h,
@@ -314,21 +432,7 @@ mod tests {
     #[test]
     fn validate_config_error_no_floors() {
         let map: HashMap<String, Floor> = HashMap::new();
-        let config = Config{ map };
-        assert!(validate_config(&config).is_err());
-    }
-    #[test]
-    fn validate_config_error_one_floor() {
-        let mut map: HashMap<String, Floor> = HashMap::new();
-        _ = map.insert("First Floor".to_owned(), Floor{
-            name: "First Floor".to_owned(),
-            rooms: vec![Room{name: "bathroom".to_owned(), hiding_spots: vec![
-                HidingSpot{
-                    name: "under sink".to_owned()
-                }
-            ]}],
-        });
-        let config = Config{ map };
+        let config = Config{ house_map: map };
         assert!(validate_config(&config).is_err());
     }
     #[test]
@@ -346,7 +450,7 @@ mod tests {
             name: "Second Floor".to_owned(), 
             rooms: vec![], 
         });
-        let config = Config{ map };
+        let config = Config{ house_map: map };
         assert!(validate_config(&config).is_err());
     }
     #[test]
@@ -365,7 +469,7 @@ mod tests {
             rooms: vec![Room{name: "bathroom".to_owned(), 
                 hiding_spots: vec![]}],
         });
-        let config = Config{ map };
+        let config = Config{ house_map: map };
         assert!(validate_config(&config).is_err());
     }
     #[test]
@@ -387,7 +491,7 @@ mod tests {
                 }
             ]}],
         });
-        let config = Config{ map };
+        let config = Config{ house_map: map };
         assert!(validate_config(&config).is_err());
     }
     #[test]
@@ -409,7 +513,7 @@ mod tests {
                 }
             ]}],
         });
-        let config = Config{ map };
+        let config = Config{ house_map: map };
         assert!(validate_config(&config).is_ok());
     }
     #[test]
@@ -418,6 +522,61 @@ mod tests {
         let config:Config = serde_json::from_str(&f).unwrap();
         for _ in [1..=100] {
             assert!(generate_hiding_spot(&config).is_some());
+        }
+    }
+    #[test]
+    fn get_config_for_level_easy() {
+        let config = get_config_for_level(Difficulty::Easy).expect("need config");
+        assert_eq!(config.house_map.len(), 1);
+        // skip the name field
+        let floor = config.house_map.values().next().expect("need rooms");
+        assert_eq!(floor.rooms.len(), 3);
+        for room in &floor.rooms {
+            assert_eq!(room.hiding_spots.len(), 2);
+        }
+    }
+    #[test]
+    fn get_config_for_level_medium() {
+        let config = get_config_for_level(Difficulty::Medium).expect("need config");
+        assert_eq!(config.house_map.len(), 1);
+        // skip the name field
+        let floor = config.house_map.values().next().expect("need rooms");
+        assert_eq!(floor.rooms.len(), 5);
+        for room in &floor.rooms {
+            assert_eq!(room.hiding_spots.len(), 3);
+        }
+    }
+    #[test]
+    fn get_config_for_level_medium_advanced() {
+        let config = get_config_for_level(Difficulty::MediumAdvanced).expect("need config");
+        assert_eq!(config.house_map.len(), 2);
+        for floor in config.house_map.values() {
+            assert_eq!(floor.rooms.len(), 3);
+            for room in &floor.rooms {
+                assert_eq!(room.hiding_spots.len(), 3);
+            }
+        }
+    }
+    #[test]
+    fn get_config_for_level_advanced() {
+        let config = get_config_for_level(Difficulty::Advanced).expect("need config");
+        assert_eq!(config.house_map.len(), 2);
+        for floor in config.house_map.values() {
+            assert_eq!(floor.rooms.len(), 5);
+            for room in &floor.rooms {
+                assert_eq!(room.hiding_spots.len(), 4);
+            }
+        }
+    }
+    #[test]
+    fn get_config_for_level_expert() {
+        let config = get_config_for_level(Difficulty::Expert).expect("need config");
+        assert_eq!(config.house_map.len(), 3);
+        for floor in config.house_map.values() {
+            assert_eq!(floor.rooms.len(), 5);
+            for room in &floor.rooms {
+                assert_eq!(room.hiding_spots.len(), 4);
+            }
         }
     }
 }

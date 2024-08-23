@@ -16,6 +16,7 @@ use super::{
 struct War {
     player: VecDeque<Card>,
     computer: VecDeque<Card>,
+    seconds_rest: u64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -45,16 +46,24 @@ impl Rank {
 }
 
 impl War {
-    fn new() -> Self {
+    fn new(seconds_rest: u64) -> Self {
         let mut deck = Deck::new();
         deck.shuffle();
         War{
             player: VecDeque::from(deck.cards[0..=25].to_vec()),
             computer: VecDeque::from(deck.cards[26..].to_vec()),
+            seconds_rest,
         }
     }
     fn run_game_loop(&mut self) {
         loop {
+            match self.get_input().expect("player should have made a choice") {
+                PlayerChoice::Quit => {
+                    println!("thanks for playing!\n");
+                    break
+                }
+                PlayerChoice::PlayCard => {},
+            }
             let keep_playing = self.play_round();
             if !keep_playing {
                 break
@@ -67,7 +76,7 @@ impl War {
             let mut input = String::new();
             io::stdin().read_line(&mut input)?;
             println!();
-            if let Err(_) = input.trim().parse::<u8>() {
+            if input.trim().parse::<u8>().is_err() {
                 eprintln!("input not recognized, please try again");
                     continue
             }
@@ -94,13 +103,6 @@ impl War {
         if self.computer.is_empty() {
             println!("you win!!!\n");
             return false
-        }
-        match self.get_input().expect("player should have made a choice") {
-            PlayerChoice::Quit => {
-                println!("thanks for playing!\n");
-                return false;
-            }
-            PlayerChoice::PlayCard => {},
         }
         let player_card = self.player.pop_front().expect("player should have a card for round");
         let computer_card = self.computer.pop_front().expect("computer should have a card for round");
@@ -187,7 +189,7 @@ impl War {
     fn play_cards(&self, player_card: &Card, computer_card: &Card) {
         println!("your card:\n\n{}\n\n", deck::CardBack::new());
         println!("computer's card:\n\n{}\n\n", deck::CardBack::new());
-        thread::sleep(Duration::from_secs(2));
+        thread::sleep(Duration::from_secs(self.seconds_rest));
         print!("\x1B[19A");
         for _ in 0..19 {
             print!("\x1B[K");
@@ -200,7 +202,7 @@ impl War {
 }
 
 pub fn run_war() -> Result<()> {
-    let mut war = War::new();
+    let mut war = War::new(2);
     let (r, g, b) = color();
     println!("{}", ascii::WAR.truecolor(r, g, b));
     war.run_game_loop();
@@ -214,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_new_game_initialization() {
-        let war = War::new();
+        let war = War::new(0);
         assert_eq!(war.player.len(), 26);
         assert_eq!(war.computer.len(), 26);
     }
@@ -230,7 +232,9 @@ mod tests {
         let mut war = War {
             player: VecDeque::from(deck.cards[0..2].to_vec()),
             computer: VecDeque::from(deck.cards[2..].to_vec()),
+            seconds_rest: 0,
         };
+        println!("{:?}", war);
         war.play_round();
         assert_eq!(war.player.len(), 3);
         assert_eq!(war.computer.len(), 1);
@@ -247,6 +251,7 @@ mod tests {
         let mut war = War {
             player: VecDeque::from(deck.cards[0..2].to_vec()),
             computer: VecDeque::from(deck.cards[2..].to_vec()),
+            seconds_rest: 0,
         };
         war.play_round();
         assert_eq!(war.player.len(), 1);
@@ -266,6 +271,7 @@ mod tests {
         let mut war = War {
             player: VecDeque::from(deck.cards[0..=2].to_vec()),
             computer: VecDeque::from(deck.cards[3..].to_vec()),
+            seconds_rest: 0,
         };
         war.play_round();
         assert_eq!(war.player.len(), 6);
@@ -283,6 +289,7 @@ mod tests {
         let mut war = War {
             player: VecDeque::from(vec![deck.cards[0]]),
             computer: VecDeque::from(deck.cards[1..].to_vec()),
+            seconds_rest: 0,
         };
         war.play_round();
         assert_eq!(war.player.len(), 4);
@@ -301,6 +308,7 @@ mod tests {
             // swap from last test
             computer: VecDeque::from(vec![deck.cards[0]]),
             player: VecDeque::from(deck.cards[1..].to_vec()),
+            seconds_rest: 0,
         };
         war.play_round();
         assert_eq!(war.player.len(), 0);
@@ -320,6 +328,7 @@ mod tests {
         let mut war = War {
             player: VecDeque::from(deck.cards[0..=1].to_vec()),
             computer: VecDeque::from(deck.cards[2..].to_vec()),
+            seconds_rest: 0,
         };
         war.play_round();
         assert_eq!(war.player.len(), 5);
@@ -338,6 +347,7 @@ mod tests {
         let mut war = War {
             computer: VecDeque::from(deck.cards[0..=1].to_vec()),
             player: VecDeque::from(deck.cards[2..].to_vec()),
+            seconds_rest: 0,
         };
         war.play_round();
         assert_eq!(war.player.len(), 0);
@@ -357,6 +367,7 @@ mod tests {
         let mut war = War {
             player: VecDeque::from(deck.cards[0..=2].to_vec()),
             computer: VecDeque::from(deck.cards[3..].to_vec()),
+            seconds_rest: 0,
         };
         war.play_round();
         assert_eq!(war.player.len(), 6);
@@ -376,6 +387,7 @@ mod tests {
         let mut war = War {
             computer: VecDeque::from(deck.cards[0..=2].to_vec()),
             player: VecDeque::from(deck.cards[3..].to_vec()),
+            seconds_rest: 0,
         };
         war.play_round();
         assert_eq!(war.player.len(), 0);
@@ -400,6 +412,7 @@ mod tests {
         let mut war = War {
             player: VecDeque::from(deck.cards[0..=4].to_vec()),
             computer: VecDeque::from(deck.cards[5..].to_vec()),
+            seconds_rest: 0,
         };
         war.play_round();
         assert_eq!(war.player.len(), 10);
@@ -428,6 +441,7 @@ mod tests {
         let mut war = War {
             computer: VecDeque::from(deck.cards[0..=7].to_vec()),
             player: VecDeque::from(deck.cards[8..].to_vec()),
+            seconds_rest: 0,
         };
         war.play_round();
         assert_eq!(war.player.len(), 2);

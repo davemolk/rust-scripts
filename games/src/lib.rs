@@ -85,6 +85,7 @@ impl Game {
         loop {
             let mut input = String::new();
             io::stdin().read_line(&mut input).expect("failed to read input");
+            println!();
             let mut choice = match input.trim().parse::<usize>() {
                 Ok(c) => c,
                 Err(_) => {
