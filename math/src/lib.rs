@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::io::BufReader;
 use std::io;
 use std::fs::{File, OpenOptions};
-use std::path::PathBuf;
 use rand::Rng;
 use rand::seq::SliceRandom;
 use colored::Colorize;
@@ -92,11 +91,10 @@ pub struct User {
     operations: Vec<Operations>,
     show_high_score: bool,
     difficulty: Difficulty,
-    games_path: PathBuf,
 }
 
 impl User {
-    pub fn new(args: Args, games_path: PathBuf) -> Self {
+    pub fn new(args: Args) -> Self {
         println!("what's your name?");
         let mut name = String::new();
         io::stdin().read_line(&mut name).unwrap();
@@ -125,7 +123,7 @@ impl User {
         if let Some(ref o) = args.operations {
             operations = Self::parse_operations(o);
         }
-        User{ args, name: cleaned_name, score: 0, high_scores, file_name: path, operations, show_high_score: true, difficulty, games_path}
+        User{ args, name: cleaned_name, score: 0, high_scores, file_name: path, operations, show_high_score: true, difficulty}
     }
     fn parse_operations(args: &str) -> Vec<Operations> {
         if args.is_empty() {
@@ -295,10 +293,6 @@ impl User {
                         }
                     }
                 }
-                if self.score == 5 || self.score % 10 == 0{
-                    self.play_a_game(self.games_path.clone())?;
-                    // self.play_game()?;
-                }
                 return Ok(true)
             }
             println!("try again...");
@@ -322,20 +316,6 @@ impl User {
             Some(c) => println!("{}{} {}\n", c.truecolor(r, g, b), " now your score is".truecolor(r, g, b), self.score),
             None => println!("great job! now your score is {}\n", self.score),
         }
-    }
-    fn play_a_game(&mut self, games_path: PathBuf) -> Result<()> {
-        self.save_game()?;
-        let mut child = std::process::Command::new(games_path)
-            .stdin(std::process::Stdio::inherit())
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .spawn()?;
-
-            let status = child.wait()?;
-            if !status.success() {
-                return Err(anyhow!("Games program exited with error"));
-            }
-        Ok(())
     }
 }
 

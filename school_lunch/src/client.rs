@@ -1,4 +1,5 @@
 use std::fs::read_to_string;
+use std::path::Path;
 
 use anyhow::{Result, anyhow};
 use chrono::{Datelike, Local, Weekday};
@@ -36,8 +37,14 @@ impl LunchClient {
     }
     fn get_url(&self) -> Result<String> {
         // get school id and grade
-        let config_string = read_to_string("config.json").expect("failed to read config");
-        let config: Config = serde_json::from_str(&config_string)?;
+        let config: Config = match self.get_config_path() {
+            Some(config_path) => {
+                let config_string = read_to_string(config_path).expect("failed to read config");
+                serde_json::from_str(&config_string)?
+            },
+            None => return Err(anyhow!("config file not found")),
+        };
+        
         // avoid unnecessary api call
         match Local::now().weekday() {
             Weekday::Sat | Weekday::Sun => { return Err(anyhow!("no school on the weekend")); },
@@ -56,6 +63,23 @@ impl LunchClient {
             println!("{}", option.menu_item_description);
         } 
         Ok(())
+    }
+    fn get_config_path(&self ) -> Option<String> {
+        let home_dir = std::env::var("HOME").ok();
+        let standard_path = Path::new("/etc/lunch/config.json");
+        let home_path = home_dir.map(|d| Path::new(&d).join(".lunch/config.json"));
+
+        if standard_path.exists() {
+            Some(standard_path.to_str().unwrap().to_string())
+        } else if let Some(path) = home_path {
+            if path.exists() {
+                Some(path.to_str().unwrap().to_string())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }
 
