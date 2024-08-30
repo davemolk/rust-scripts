@@ -1,35 +1,45 @@
 use anyhow::Result;
+use clap::ValueEnum;
 use rand::{self, Rng};
 use std::fmt;
 use std::io;
 use colored::Colorize;
+use clap::Parser;
 
-mod ascii;
-mod deck;
-mod guess_the_number;
-mod hide_and_seek;
-mod rock_paper_scissors;
-mod trivia;
-mod war;
+mod treasure;
+
+#[derive(Debug, Clone, Parser)]
+#[command(version)]
+pub struct Args {
+    /// terminal width
+    #[arg(short)]
+    x: Option<u16>,
+    /// terminal height
+    #[arg(short)]
+    y: Option<u16>,
+    /// difficulty level
+    #[arg(short, long, value_enum)]
+    difficulty: Option<Difficulty>,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum, Default)]
+enum Difficulty {
+    #[default]
+    Beginner,
+    Intermediate,
+    Advanced,
+}
 
 #[derive(Debug, Copy, Clone)]
 enum GameOptions {
-    RockPaperScissors,
-    GuessTheNumber,
-    HideAndSeek,
-    Trivia,
-    War,
+    TreasureSeeker,
     Quit,
 }
 
 impl GameOptions {
-    fn all() -> &'static [GameOptions] {
+    fn all() -> &'static[GameOptions] {
         &[
-            GameOptions::RockPaperScissors,
-            GameOptions::GuessTheNumber,
-            GameOptions::HideAndSeek,
-            GameOptions::Trivia,
-            GameOptions::War,
+            GameOptions::TreasureSeeker,
             GameOptions::Quit,
         ]
     }
@@ -37,49 +47,47 @@ impl GameOptions {
         for (i, game) in GameOptions::all().iter().enumerate() {
             println!("{}: {}", i+1, game);
         }
-        println!();
     }
 }
 
 impl fmt::Display for GameOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
-            GameOptions::RockPaperScissors => "Rock Paper Scissors",
-            GameOptions::GuessTheNumber => "Guess the Number",
-            GameOptions::HideAndSeek => "Hide and Seek",
-            GameOptions::Trivia => "Trivia",
-            GameOptions::War => "War",
+            GameOptions::TreasureSeeker => "Treasure Seeker",
             GameOptions::Quit => "Quit",
         };
         write!(f, "{}", s)
     }
 }
 
-#[derive(Debug)]
 pub struct Game {
+    args: Args,
     options: &'static [GameOptions],
+    difficulty: Difficulty,
 }
 
 impl Game {
-    pub fn new() -> Self {
+    pub fn new(args: Args) -> Self {
+        let difficulty = match args.difficulty {
+            Some(d) => d,
+            None => Difficulty::Beginner,
+        };
         Game{
+            args,
             options: GameOptions::all(),
+            difficulty,
         }
     }
     pub fn run(&self) -> Result<()> {
         let (r, g, b) = color();
-        println!("{}", ascii::GAMES.truecolor(r, g, b));
+        println!("{}", GAMES.truecolor(r, g, b));
         match self.prompt_user() {
-            GameOptions::RockPaperScissors => rock_paper_scissors::run_rps()?,
-            GameOptions::GuessTheNumber => guess_the_number::run_number_guess()?,
-            GameOptions::HideAndSeek => hide_and_seek::run_hide_and_seek()?,
-            GameOptions::Trivia => trivia::run_trivia()?,
-            GameOptions::War => war::run_war()?,
+            GameOptions::TreasureSeeker => treasure::run_treasure_seek(self.args.x, self.args.y, self.difficulty)?,
             GameOptions::Quit => {
                 println!("thanks for playing!");
                 return Ok(());
             },
-        };
+        }
         Ok(())
     }
     fn prompt_user(&self) -> GameOptions {
@@ -105,6 +113,14 @@ impl Game {
         }
     }
 }
+
+const GAMES: &str = r"
+   ____ _____ _____ ___  ___  _____
+  / __ `/ __ `/ __ `__ \/ _ \/ ___/
+ / /_/ / /_/ / / / / / /  __(__  ) 
+ \__, /\__,_/_/ /_/ /_/\___/____/  
+/____/                             
+";
 
 pub fn color() -> (u8, u8, u8) {
     let r = rand::thread_rng().gen_range(0..=255);

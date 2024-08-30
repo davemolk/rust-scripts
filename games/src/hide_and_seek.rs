@@ -1,4 +1,4 @@
-use rand::thread_rng;
+use rand::{thread_rng, Rng};
 use serde_derive::Deserialize;
 use std::collections::HashMap;
 use std::thread::sleep;
@@ -183,7 +183,8 @@ impl Game {
             let floor = input.trim();
             if floor == "q" {
                 self.done_playing = true;
-                return Err(anyhow!("thanks for playing!\n"));
+                return Ok(());
+                // return Err(anyhow!("thanks for playing!\n"));
             }
             let floor_idx = floor.parse::<usize>()?;
             if floor_idx != 0 && floor_idx <= self.floors.len() {
@@ -214,7 +215,7 @@ impl Game {
             let room = input.trim();
             if room == "q" {
                 self.done_playing = true;
-                return Err(anyhow!("thanks for playing!\n")); 
+                return Err(anyhow!("thanks for playing!\n"));
             }
             if room == "d" {
                 return Ok(true)
@@ -233,7 +234,7 @@ impl Game {
             self.correct_room();
         }
         let room = self.current_room.as_ref().unwrap();
-        println!("you've entered {}\n", room.name);
+        println!("you've entered the {}\n", room.name);
         println!("enter the number of the hiding spot you want to search");
         println!("enter d to search a different room\n");
         for (idx, hs) in room.hiding_spots.iter().enumerate() {
@@ -264,11 +265,23 @@ impl Game {
                 self.done_playing = true;
                 return Ok(false)
             } 
-            println!("not there, try again!\n")
+            let nope = Self::get_nope();
+            println!("{}\n", nope);
         }
+    }
+    fn get_nope() -> String {
+        let mut rng = rand::thread_rng();
+        let choice = match ["nope", "not there", "keep looking", "not quite", "try again", "almost", "keep going"].choose(&mut rng) {
+            Some(c) => c,
+            None => "nope"
+        };
+        choice.to_string()
     }
     fn correct_floor(&mut self) {
         if !self.get_first_hint {
+            return;
+        }
+        if !Self::should_show_hint() {
             return;
         }
         sleep(std::time::Duration::from_millis(1500));
@@ -280,8 +293,16 @@ impl Game {
         sleep(std::time::Duration::from_millis(1500));
         self.get_first_hint = false;
     }
+    fn should_show_hint() -> bool {
+        let mut rng = rand::thread_rng();
+        let show = rng.gen_range(0..=1);
+        show %2 == 0 
+    }
     fn correct_room(&mut self) {
         if !self.get_second_hint {
+            return;
+        }
+        if !Self::should_show_hint() {
             return;
         }
         sleep(std::time::Duration::from_millis(1500));
@@ -335,8 +356,9 @@ fn generate_hiding_spot(config: &Config) -> Option<ActualHidingSpot> {
     })
 }
 fn get_difficulty_level() -> Result<Difficulty> {
-    println!("pick a difficulty level");
+    println!("pick a difficulty level:");
     Difficulty::print_difficulties();
+    println!();
     loop {
         let mut input = String::new();
         io::stdin().read_line(&mut input).expect("failed to read input");
@@ -391,6 +413,7 @@ fn create_map(num_floors: usize, num_rooms: usize, num_hiding_spots: usize) -> C
         let mut rooms = vec![];
 
         let mut all_rooms = ALL_ROOMS.to_vec();
+        all_rooms.shuffle(&mut rng);
         for _ in 0..num_rooms {
             let room_name = all_rooms.pop().expect("need a room");
             let hiding_spot_options = room_hiding_spots.get(room_name).expect("can't get hiding spot options");
