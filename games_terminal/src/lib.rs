@@ -25,9 +25,43 @@ pub struct Args {
 #[derive(Debug, Clone, Copy, ValueEnum, Default)]
 enum Difficulty {
     #[default]
+    Warmup,
     Beginner,
     Intermediate,
     Advanced,
+    Expert,
+}
+
+impl fmt::Display for Difficulty {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Difficulty::Warmup => "warmup",
+            Difficulty::Beginner => "beginner",
+            Difficulty::Intermediate => "intermediate",
+            Difficulty::Advanced => "advanced",
+            Difficulty::Expert => "expert",
+        };
+        write!(f, "{}", s)
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum Direction {
+    North,
+    East,
+    South,
+    West,
+}
+
+impl Direction {
+    pub fn reverse(&self) -> Self {
+        match self {
+            Self::North => Self::South,
+            Self::South => Self::North,
+            Self::East => Self::West,
+            Self::West => Self::East,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]

@@ -42,12 +42,6 @@ pub struct Args {
     /// game difficulty
     #[arg(short, long, value_enum)]
     difficulty: Option<Difficulty>,
-    /// path to the game binary
-    /// (math will check current directory first,
-    /// then look for environment variables, and 
-    /// will check this flag last).
-    #[arg(long)]
-    pub game_binary: Option<String>,
 }
 
 fn parse_operations(arg: &str) -> Result<String> {
