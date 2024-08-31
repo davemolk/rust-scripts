@@ -11,7 +11,10 @@ use crossterm::{
 use std::time::Duration;
 use rand::Rng;
 
-use crate::Difficulty;
+use super::{
+    Difficulty,
+    Direction,
+};
 
 const WIDTH: u16 = 40;
 const BANNER_HEIGHT: u16 = 7;
@@ -23,6 +26,54 @@ struct Point {
     y: u16,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct MovingPoint {
+    position: Point,
+    direction: Direction,
+    speed: u16,
+    // todo: customize based on the difficulty and the game dimensions
+    wait_to_draw: u8,
+}
+
+impl MovingPoint {
+    // todo need to avoid collisions w/ cacti, rocks
+    // also want to slow down the speed somehow
+    fn update_position(&mut self, board_width: u16, board_height: u16) {
+        self.wait_to_draw = 3;
+        match self.direction {
+            Direction::Up => {
+                if self.position.y > 1 {
+                    self.position.y = self.position.y.saturating_sub(self.speed);
+                } else {
+                    self.direction = Direction::Down;
+                }
+            }
+            Direction::Down => {
+                if self.position.y < board_height {
+                    self.position.y = self.position.y.saturating_add(self.speed);
+                } else {
+                    self.direction = Direction::Up;
+                }
+            }
+            Direction::Left => {
+                if self.position.x > 1 {
+                    self.position.x = self.position.x.saturating_sub(self.speed);
+                } else {
+                    self.direction = Direction::Right;
+                }
+            }
+            Direction::Right => {
+                if self.position.x < board_width {
+                    self.position.x = self.position.x.saturating_add(self.speed);
+                } else {
+                    self.direction = Direction::Left;
+                }
+            }
+        }
+    }
+
+}
+
 struct Game {
     score: u16,
     width: u16,
@@ -30,7 +81,7 @@ struct Game {
     stdout: io::Stdout,
     normal_terminal: (u16, u16),
     hero: Point,
-    coin: Point,
+    coin: MovingPoint,
     cacti: Vec<Point>,
     rocks: Vec<Point>,
     difficulty: Difficulty,
@@ -59,26 +110,11 @@ impl Game {
             hero,
             cacti: vec![],
             rocks: vec![],
-            coin: Point{x:0,y:0},
+            // we will update with real data later
+            coin: MovingPoint{ position: Point{x:0, y:0}, direction: Direction::random(), speed: 0, wait_to_draw: 0 } ,
             difficulty,
             lives: 3,
         }
-    }
-    fn run(&mut self) -> Result<()> {
-        self.prepare_screen()?;
-        self.render()?;
-        loop {
-            if self.lives == 0 {
-                eprintln!("thanks for playing!");
-                break;
-            }
-            if !self.handle_input()? {
-                break;
-            }
-            self.update_game_state();
-            self.render()?;
-        }
-        Ok(())
     }
     fn prepare_screen(&mut self) -> Result<()>{
         self.stdout
@@ -96,10 +132,16 @@ impl Game {
         Ok(())
     }
     fn update_game_state(&mut self) {
-        if self.hero == self.coin {
+        if self.hero == self.coin.position {
             self.score += 1;
             self.spawn_coin();
         }
+        if self.coin.wait_to_draw == 0 {
+            self.coin.update_position(self.width, self.height);
+        } else {
+            self.coin.wait_to_draw -= 1;
+        }
+        
     }
     fn render_screen(&mut self) -> Result<()> {
         self.stdout.execute(SetForegroundColor(Color::DarkRed))?;
@@ -226,15 +268,32 @@ impl Game {
             x = rand::thread_rng().gen_range(1..self.width);
             y = rand::thread_rng().gen_range(1..self.height);
             if x != self.hero.x && y != self.hero.y {
-                self.coin = Point{x, y};
-                break
+                // no cacti or rocks
+                if self.difficulty == Difficulty::Warmup {
+                    self.coin = MovingPoint{ 
+                        position: Point{x, y}, 
+                        direction: Direction::random(), 
+                        speed: 0,
+                        wait_to_draw: 3,
+                    };
+                    break
+                }
+                if !self.coin_collision(Point{x, y}) {
+                    self.coin = MovingPoint{ 
+                        position: Point{x, y}, 
+                        direction: Direction::random(), 
+                        speed: 1,
+                        wait_to_draw: 3,
+                    };
+                    break
+                }
             }
         }
     }
     fn draw_coin(&mut self) -> Result<()> {
         self.stdout
             .execute(SetForegroundColor(Color::DarkYellow))?
-            .execute(MoveTo(self.coin.x, self.coin.y))?
+            .execute(MoveTo(self.coin.position.x, self.coin.position.y))?
             .execute(Print("o"))?
             .flush()?;
         Ok(())
@@ -247,25 +306,17 @@ impl Game {
                     KeyCode::Esc => return Ok(false),
                     KeyCode::Char('q') => return Ok(false),
                     KeyCode::Char('Q') => return Ok(false),
-                    KeyCode::Up => if self.hero.y > 1 { 
-                        if !self.collision(Point{x: self.hero.x, y: self.hero.y - 1}) {
-                            self.hero.y -= 1; 
-                        }
+                    KeyCode::Up => if self.hero.y > 1 && !self.collision_with_damage(Point{x: self.hero.x, y: self.hero.y - 1})? { 
+                        self.hero.y -= 1; 
                     },
-                    KeyCode::Down => if self.hero.y < self.height { 
-                        if !self.collision(Point{x: self.hero.x, y: self.hero.y + 1}) {
-                            self.hero.y += 1; 
-                        }
+                    KeyCode::Down => if self.hero.y < self.height && !self.collision_with_damage(Point{x: self.hero.x, y: self.hero.y + 1})? { 
+                        self.hero.y += 1; 
                     },
-                    KeyCode::Left => if self.hero.x > 1 { 
-                        if !self.collision(Point{x: self.hero.x - 1, y: self.hero.y}) {
-                            self.hero.x -= 1; 
-                        }
+                    KeyCode::Left => if self.hero.x > 1 && !self.collision_with_damage(Point{x: self.hero.x - 1, y: self.hero.y})?{
+                        self.hero.x -= 1; 
                     },
-                    KeyCode::Right => if self.hero.x < self.width { 
-                        if !self.collision(Point{x: self.hero.x + 1, y: self.hero.y}) {
-                            self.hero.x += 1; 
-                        }
+                    KeyCode::Right => if self.hero.x < self.width && !self.collision_with_damage(Point{x: self.hero.x - 1, y: self.hero.y})? { 
+                        self.hero.x += 1; 
                     },
                     _ => {}
                 }
@@ -273,15 +324,36 @@ impl Game {
         }
         Ok(true)
     }
-    fn collision(&mut self, p: Point) -> bool {
+    fn collision_with_damage(&mut self, p: Point) -> Result<bool> {
         for c in &self.cacti {
             if c == &p {
                 match self.difficulty {
                     Difficulty::Expert | Difficulty::Advanced | Difficulty::Intermediate => {
+                        self.stdout
+                            .execute(SetForegroundColor(Color::Magenta))?
+                            .execute(MoveTo(3, self.height - 1 + BANNER_HEIGHT / 2))?
+                            .execute(Print("ouch!"))?;
+                        std::thread::sleep(std::time::Duration::from_secs(1));
+                        self.stdout
+                            .execute(MoveTo(3, self.height - 1 + BANNER_HEIGHT / 2))?
+                            .execute(Print("     "))?;
                         self.lives -=1;
                     },
                     _ => {},
                 }
+                return Ok(true);
+            }
+        }
+        for r in &self.rocks {
+            if r == &p {
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+    fn coin_collision(&mut self, p: Point) -> bool {
+        for c in &self.cacti {
+            if c == &p {
                 return true;
             }
         }
@@ -302,12 +374,28 @@ impl Game {
         terminal::disable_raw_mode()?;
         Ok(())
     }
+    fn run(&mut self) -> Result<()> {
+        self.prepare_screen()?;
+        self.render()?;
+        loop {
+            if self.lives == 0 {
+                eprintln!("thanks for playing!");
+                break;
+            }
+            if !self.handle_input()? {
+                break;
+            }
+            self.update_game_state();
+            self.render()?;
+        }
+        Ok(())
+    }
 }
 
 pub fn run_treasure_seek(width: Option<u16>, height: Option<u16>, difficulty: Difficulty) -> Result<()> {
     let mut game = Game::new(width, height, difficulty);
-    game.spawn_coin();
     game.spawn_cacti_rocks();
+    game.spawn_coin();
     enable_raw_mode()?;
     game.run()?;
     game.cleanup()?;

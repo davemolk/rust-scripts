@@ -22,7 +22,7 @@ pub struct Args {
     difficulty: Option<Difficulty>,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum, Default)]
+#[derive(Debug, Clone, Copy, ValueEnum, Default, PartialEq)]
 enum Difficulty {
     #[default]
     Warmup,
@@ -47,20 +47,31 @@ impl fmt::Display for Difficulty {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Direction {
-    North,
-    East,
-    South,
-    West,
+    Up,
+    Right,
+    Down,
+    Left,
 }
 
 impl Direction {
     pub fn reverse(&self) -> Self {
         match self {
-            Self::North => Self::South,
-            Self::South => Self::North,
-            Self::East => Self::West,
-            Self::West => Self::East,
+            Self::Up => Self::Down,
+            Self::Down => Self::Up,
+            Self::Right => Self::Left,
+            Self::Left => Self::Right,
         }
+    }
+    pub fn random() -> Self {
+        let mut rng = rand::thread_rng();
+        let variants = [
+            Direction::Up,
+            Direction::Right,
+            Direction::Down,
+            Direction::Left,
+        ];
+        let index = rng.gen_range(0..variants.len());
+        variants[index]
     }
 }
 
