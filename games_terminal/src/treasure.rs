@@ -1,78 +1,24 @@
-use anyhow::{Result, anyhow};
-use std::io::{self, Write};
+use anyhow::Result;
+use std::io;
 use crossterm::{
-    cursor::{self, Hide, MoveTo, Show}, event::{self, KeyCode, KeyEvent}, 
-    queue, 
-    style::{self, Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor, Stylize}, 
-    
-    terminal::{self, enable_raw_mode, Clear, ClearType, SetSize}, 
+    cursor::MoveTo, 
+    event::{KeyCode, KeyEvent}, 
+    style::{Color, Print, SetForegroundColor},
     ExecutableCommand, 
+    event,
 };
 use std::time::Duration;
 use rand::Rng;
+use crate::{movement, render};
 
 use super::{
     Difficulty,
-    Direction,
+    movement::Direction,
+    point::{MovingPoint, Point},
+    WIDTH,
+    BOARD_HEIGHT,
+    BANNER_HEIGHT,
 };
-
-const WIDTH: u16 = 40;
-const BANNER_HEIGHT: u16 = 7;
-const BOARD_HEIGHT: u16 = 10;
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct Point {
-    x: u16,
-    y: u16,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct MovingPoint {
-    position: Point,
-    direction: Direction,
-    speed: u16,
-    // todo: customize based on the difficulty and the game dimensions
-    wait_to_draw: u8,
-}
-
-impl MovingPoint {
-    // todo need to avoid collisions w/ cacti, rocks
-    // also want to slow down the speed somehow
-    fn update_position(&mut self, board_width: u16, board_height: u16) {
-        self.wait_to_draw = 3;
-        match self.direction {
-            Direction::Up => {
-                if self.position.y > 1 {
-                    self.position.y = self.position.y.saturating_sub(self.speed);
-                } else {
-                    self.direction = Direction::Down;
-                }
-            }
-            Direction::Down => {
-                if self.position.y < board_height {
-                    self.position.y = self.position.y.saturating_add(self.speed);
-                } else {
-                    self.direction = Direction::Up;
-                }
-            }
-            Direction::Left => {
-                if self.position.x > 1 {
-                    self.position.x = self.position.x.saturating_sub(self.speed);
-                } else {
-                    self.direction = Direction::Right;
-                }
-            }
-            Direction::Right => {
-                if self.position.x < board_width {
-                    self.position.x = self.position.x.saturating_add(self.speed);
-                } else {
-                    self.direction = Direction::Left;
-                }
-            }
-        }
-    }
-
-}
 
 struct Game {
     score: u16,
@@ -111,24 +57,18 @@ impl Game {
             cacti: vec![],
             rocks: vec![],
             // we will update with real data later
-            coin: MovingPoint{ position: Point{x:0, y:0}, direction: Direction::random(), speed: 0, wait_to_draw: 0 } ,
+            coin: MovingPoint::default(),
             difficulty,
             lives: 3,
         }
     }
-    fn prepare_screen(&mut self) -> Result<()>{
-        self.stdout
-            .execute(SetSize(self.width, self.height))?
-            .execute(Clear(ClearType::All))?
-            .execute(Hide)?;
-        Ok(())
-    }
     fn render(&mut self) -> Result<()> {
-        self.render_screen()?;
-        self.draw_hero()?;
-        self.draw_cacti()?;
-        self.draw_rocks()?;
-        self.draw_coin()?;
+        render::render_screen(&mut self.stdout, self.width, self.height, Color::DarkRed)?;
+        render::render_banner(&mut self.stdout, self.height, self.lives, self.score, self.difficulty)?;
+        render::draw_point(&mut self.stdout, '@', self.hero.x, self.hero.y, Color::DarkMagenta)?;
+        render::draw_points(&mut self.stdout, '#', &self.cacti, Color::Green)?;
+        render::draw_points(&mut self.stdout, 'a', &self.rocks, Color::DarkGrey)?;
+        render::draw_point(&mut self.stdout, 'o', self.coin.position.x, self.coin.position.y, Color::DarkYellow)?;
         Ok(())
     }
     fn update_game_state(&mut self) {
@@ -137,68 +77,16 @@ impl Game {
             self.spawn_coin();
         }
         if self.coin.wait_to_draw == 0 {
-            self.coin.update_position(self.width, self.height);
+            let points = self.get_active_points();
+            self.coin.update_position(self.width, self.height, self.wait_to_draw(), points);
         } else {
             self.coin.wait_to_draw -= 1;
         }
-        
     }
-    fn render_screen(&mut self) -> Result<()> {
-        self.stdout.execute(SetForegroundColor(Color::DarkRed))?;
-        // columns
-        for y in 0..self.height + 1 + BANNER_HEIGHT {
-            self.stdout
-                .execute(MoveTo(0, y))?
-                .execute(Print("X"))?
-                .execute(MoveTo(self.width + 1, y))?
-                .execute(Print("X"))?;
-        }
-        // rows
-        for x in 0..self.width + 2 {
-            self.stdout
-                .execute(MoveTo(x, 0))?
-                .execute(Print("X"))?
-                .execute(MoveTo(x, self.height + 1))?
-                .execute(Print("X"))?
-                .execute(MoveTo(x, self.height + BANNER_HEIGHT))?
-                .execute(Print("X"))?;
-        }
-        // corners
-        self.stdout
-            .execute(MoveTo(0, 0))?
-            .execute(Print("X"))?
-            .execute(MoveTo(self.width + 1, self.height + 1))?
-            .execute(Print("X"))?
-            .execute(MoveTo(self.width + 1, 0))?
-            .execute(Print("X"))?
-            .execute(MoveTo(0, self.height + 1))?
-            .execute(Print("X"))?;
-        // empty the background
-        self.stdout.execute(ResetColor).unwrap();
-        for y in 1..self.height + 1 {
-            for x in 1..self.width + 1 {
-                self.stdout
-                    .execute(MoveTo(x, y)).unwrap()
-                    .execute(Print(" ")).unwrap();
-            }
-        }
-        // banner stuff
-        self.stdout
-            .execute(MoveTo(3, self.height + BANNER_HEIGHT / 2))?
-            .execute(Print(format!("lives remaining: {}", self.lives)))?
-            .execute(MoveTo(3, self.height + 1 + BANNER_HEIGHT / 2))?
-            .execute(Print(format!("difficulty: {}", self.difficulty)))?
-            .execute(MoveTo(3, self.height + 2 + BANNER_HEIGHT / 2))?
-            .execute(Print(format!("score: {}", self.score)))?;
-        Ok(())
-    }
-    fn draw_hero(&mut self) -> Result<()> {
-        self.stdout
-            .execute(SetForegroundColor(Color::Grey))?
-            .execute(MoveTo(self.hero.x, self.hero.y))?
-            .execute(Print("@"))?
-            .flush()?;
-        Ok(())
+    fn get_active_points(&self) -> Vec<Point> {
+        let mut points = self.cacti.clone();
+        points.extend(self.rocks.clone());
+        points
     }
     fn spawn_cacti_rocks(&mut self) {
         let mut cacti_rocks = Vec::new();
@@ -207,15 +95,14 @@ impl Game {
         let desired_length = match self.difficulty {
             Difficulty::Warmup => 0,
             Difficulty::Beginner => 4,
-            Difficulty::Intermediate => 8,
-            Difficulty::Advanced => 8,
+            Difficulty::Intermediate | Difficulty::Advanced => 8,
             Difficulty::Expert => 12,
         };
         loop {
             x = rand::thread_rng().gen_range(1..self.width);
             y = rand::thread_rng().gen_range(1..self.height);
             if x != self.hero.x && y != self.hero.y {
-                cacti_rocks.push(Point{x, y})
+                cacti_rocks.push(Point{x, y});
             }
             if cacti_rocks.len() == desired_length {
                 break
@@ -227,11 +114,7 @@ impl Game {
                 self.rocks = cacti_rocks[0..3].to_vec();
                 self.cacti = cacti_rocks[3..].to_vec();
             },
-            Difficulty::Intermediate => {
-                self.rocks = cacti_rocks[0..4].to_vec();
-                self.cacti = cacti_rocks[4..].to_vec();
-            },
-            Difficulty::Advanced => {
+            Difficulty::Intermediate | Difficulty::Advanced => {
                 self.rocks = cacti_rocks[0..4].to_vec();
                 self.cacti = cacti_rocks[4..].to_vec();
             },
@@ -240,26 +123,6 @@ impl Game {
                 self.cacti = cacti_rocks[6..].to_vec();
             },
         }
-    }
-    fn draw_cacti(&mut self) -> Result<()> {
-        for cactus in &self.cacti {
-            self.stdout
-                .execute(SetForegroundColor(Color::Green))?
-                .execute(MoveTo(cactus.x, cactus.y))?
-                .execute(Print("#"))?
-                .flush()?;
-        }        
-        Ok(())
-    }
-    fn draw_rocks(&mut self) -> Result<()> {
-        for rock in &self.rocks {
-            self.stdout
-                .execute(SetForegroundColor(Color::DarkGrey))?
-                .execute(MoveTo(rock.x, rock.y))?
-                .execute(Print("a"))?
-                .flush()?;
-        }        
-        Ok(())
     }
     fn spawn_coin(&mut self) {
         let mut x: u16;
@@ -274,38 +137,39 @@ impl Game {
                         position: Point{x, y}, 
                         direction: Direction::random(), 
                         speed: 0,
-                        wait_to_draw: 3,
+                        wait_to_draw: 0,
                     };
                     break
                 }
-                if !self.coin_collision(Point{x, y}) {
+                let mut points = self.cacti.clone();
+                points.extend(self.rocks.clone());
+                if !movement::detect_collision(Point{x, y}, points) {
                     self.coin = MovingPoint{ 
                         position: Point{x, y}, 
                         direction: Direction::random(), 
                         speed: 1,
-                        wait_to_draw: 3,
+                        wait_to_draw: self.wait_to_draw()
                     };
                     break
                 }
             }
         }
     }
-    fn draw_coin(&mut self) -> Result<()> {
-        self.stdout
-            .execute(SetForegroundColor(Color::DarkYellow))?
-            .execute(MoveTo(self.coin.position.x, self.coin.position.y))?
-            .execute(Print("o"))?
-            .flush()?;
-        Ok(())
+    fn wait_to_draw(&self) -> u8 {
+        match self.difficulty {
+            Difficulty::Warmup => 0,
+            Difficulty::Beginner => 5,
+            Difficulty::Intermediate => 3,
+            Difficulty::Advanced => 1,
+            Difficulty::Expert => 1,
+        }
     }
     fn handle_input(&mut self) -> Result<bool> {
         if event::poll(Duration::from_millis(100))? {
             if let event::Event::Key(KeyEvent { code, .. }) = event::read()?
             {
                 match code {
-                    KeyCode::Esc => return Ok(false),
-                    KeyCode::Char('q') => return Ok(false),
-                    KeyCode::Char('Q') => return Ok(false),
+                    KeyCode::Esc | KeyCode::Char('Q' | 'q') => return Ok(false),
                     KeyCode::Up => if self.hero.y > 1 && !self.collision_with_damage(Point{x: self.hero.x, y: self.hero.y - 1})? { 
                         self.hero.y -= 1; 
                     },
@@ -315,7 +179,7 @@ impl Game {
                     KeyCode::Left => if self.hero.x > 1 && !self.collision_with_damage(Point{x: self.hero.x - 1, y: self.hero.y})?{
                         self.hero.x -= 1; 
                     },
-                    KeyCode::Right => if self.hero.x < self.width && !self.collision_with_damage(Point{x: self.hero.x - 1, y: self.hero.y})? { 
+                    KeyCode::Right => if self.hero.x < self.width && !self.collision_with_damage(Point{x: self.hero.x + 1, y: self.hero.y})? { 
                         self.hero.x += 1; 
                     },
                     _ => {}
@@ -329,14 +193,12 @@ impl Game {
             if c == &p {
                 match self.difficulty {
                     Difficulty::Expert | Difficulty::Advanced | Difficulty::Intermediate => {
-                        self.stdout
-                            .execute(SetForegroundColor(Color::Magenta))?
-                            .execute(MoveTo(3, self.height - 1 + BANNER_HEIGHT / 2))?
-                            .execute(Print("ouch!"))?;
-                        std::thread::sleep(std::time::Duration::from_secs(1));
-                        self.stdout
-                            .execute(MoveTo(3, self.height - 1 + BANNER_HEIGHT / 2))?
-                            .execute(Print("     "))?;
+                        let mut blue = true;
+                        for i in (3..self.width-4).step_by(2) {
+                            let color = if blue { Color::DarkBlue } else { Color::DarkGreen };
+                            blue = !blue;
+                            self.damage_animation(i, color)?;
+                        }
                         self.lives -=1;
                     },
                     _ => {},
@@ -351,31 +213,22 @@ impl Game {
         }
         Ok(false)
     }
-    fn coin_collision(&mut self, p: Point) -> bool {
-        for c in &self.cacti {
-            if c == &p {
-                return true;
-            }
-        }
-        for r in &self.rocks {
-            if r == &p {
-                return true;
-            }
-        }
-        false
-    }
-    fn cleanup(&mut self) -> Result<()> {
-        let (x, y) = self.normal_terminal;
+    fn damage_animation(&mut self, width: u16, color: Color) -> Result<()> {
         self.stdout
-            .execute(terminal::SetSize(x, y))?
-            .execute(Clear(ClearType::All))?
-            .execute(Show)?
-            .execute(ResetColor)?;
-        terminal::disable_raw_mode()?;
+            .execute(SetForegroundColor(Color::DarkRed))?
+            .execute(MoveTo(width, self.height - 1 + BANNER_HEIGHT / 2))?
+            .execute(Print("ouch!"))?;
+        render::render_screen(&mut self.stdout, self.width, self.height, color)?;
+        render::render_banner(&mut self.stdout, self.height, self.lives, self.score, self.difficulty)?;
+
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        self.stdout
+            .execute(MoveTo(width, self.height - 1 + BANNER_HEIGHT / 2))?
+            .execute(Print("     "))?;
         Ok(())
     }
     fn run(&mut self) -> Result<()> {
-        self.prepare_screen()?;
+        render::prepare_screen(&mut self.stdout, self.width, self.height)?;
         self.render()?;
         loop {
             if self.lives == 0 {
@@ -387,6 +240,8 @@ impl Game {
             }
             self.update_game_state();
             self.render()?;
+            // limit the frame rate
+            std::thread::sleep(Duration::from_millis(80));
         }
         Ok(())
     }
@@ -394,10 +249,12 @@ impl Game {
 
 pub fn run_treasure_seek(width: Option<u16>, height: Option<u16>, difficulty: Difficulty) -> Result<()> {
     let mut game = Game::new(width, height, difficulty);
-    game.spawn_cacti_rocks();
+    if difficulty != Difficulty::Warmup {
+        game.spawn_cacti_rocks();
+    }
     game.spawn_coin();
-    enable_raw_mode()?;
     game.run()?;
-    game.cleanup()?;
+    let (x, y) = game.normal_terminal;
+    render::cleanup(&mut game.stdout, x, y)?;
     Ok(())
 }

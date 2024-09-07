@@ -7,6 +7,16 @@ use colored::Colorize;
 use clap::Parser;
 
 mod treasure;
+mod point;
+mod coins;
+mod timer;
+mod input;
+mod movement;
+mod render;
+
+const WIDTH: u16 = 30;
+const BANNER_HEIGHT: u16 = 7;
+const BOARD_HEIGHT: u16 = 10;
 
 #[derive(Debug, Clone, Parser)]
 #[command(version)]
@@ -22,9 +32,8 @@ pub struct Args {
     difficulty: Option<Difficulty>,
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, ValueEnum, PartialEq)]
 enum Difficulty {
-    #[default]
     Warmup,
     Beginner,
     Intermediate,
@@ -41,42 +50,13 @@ impl fmt::Display for Difficulty {
             Difficulty::Advanced => "advanced",
             Difficulty::Expert => "expert",
         };
-        write!(f, "{}", s)
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum Direction {
-    Up,
-    Right,
-    Down,
-    Left,
-}
-
-impl Direction {
-    pub fn reverse(&self) -> Self {
-        match self {
-            Self::Up => Self::Down,
-            Self::Down => Self::Up,
-            Self::Right => Self::Left,
-            Self::Left => Self::Right,
-        }
-    }
-    pub fn random() -> Self {
-        let mut rng = rand::thread_rng();
-        let variants = [
-            Direction::Up,
-            Direction::Right,
-            Direction::Down,
-            Direction::Left,
-        ];
-        let index = rng.gen_range(0..variants.len());
-        variants[index]
+        write!(f, "{s}")
     }
 }
 
 #[derive(Debug, Copy, Clone)]
 enum GameOptions {
+    Coins,
     TreasureSeeker,
     Quit,
 }
@@ -84,6 +64,7 @@ enum GameOptions {
 impl GameOptions {
     fn all() -> &'static[GameOptions] {
         &[
+            GameOptions::Coins,
             GameOptions::TreasureSeeker,
             GameOptions::Quit,
         ]
@@ -98,10 +79,11 @@ impl GameOptions {
 impl fmt::Display for GameOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
+            GameOptions::Coins => "Coins",
             GameOptions::TreasureSeeker => "Treasure Seeker",
             GameOptions::Quit => "Quit",
         };
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
 
@@ -127,6 +109,7 @@ impl Game {
         let (r, g, b) = color();
         println!("{}", GAMES.truecolor(r, g, b));
         match self.prompt_user() {
+            GameOptions::Coins => coins::run_coins(self.args.x, self.args.y, self.difficulty)?,
             GameOptions::TreasureSeeker => treasure::run_treasure_seek(self.args.x, self.args.y, self.difficulty)?,
             GameOptions::Quit => {
                 println!("thanks for playing!");
@@ -142,12 +125,9 @@ impl Game {
             let mut input = String::new();
             io::stdin().read_line(&mut input).expect("failed to read input");
             println!();
-            let mut choice = match input.trim().parse::<usize>() {
-                Ok(c) => c,
-                Err(_) => {
-                    eprintln!("invalid choice, please try again");
-                    continue
-                }
+            let Ok(mut choice) = input.trim().parse::<usize>() else {
+                eprintln!("invalid choice, please try again");
+                continue
             };
             choice = choice.saturating_sub(1);
             if choice >= self.options.len() {
