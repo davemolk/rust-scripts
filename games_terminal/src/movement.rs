@@ -1,9 +1,11 @@
+use std::collections::HashSet;
+
 use rand::Rng;
 
 use super::point::{MovingPoint, Point};
 
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum Direction {
     Up,
     Right,
@@ -36,6 +38,14 @@ impl Direction {
 pub fn detect_collision(point: Point, points: Vec<Point>) -> bool {
     for p in points {
         if point == p {
+            return true;
+        }
+    }
+    false
+}
+pub fn detect_moving_collision(point: Point, points: &Vec<MovingPoint>) -> bool {
+    for p in points {
+        if point == p.position {
             return true;
         }
     }

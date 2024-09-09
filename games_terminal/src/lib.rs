@@ -3,6 +3,7 @@ use clap::ValueEnum;
 use rand::{self, Rng};
 use std::fmt;
 use std::io;
+use std::time::Duration;
 use colored::Colorize;
 use clap::Parser;
 
@@ -17,6 +18,7 @@ mod render;
 const WIDTH: u16 = 30;
 const BANNER_HEIGHT: u16 = 7;
 const BOARD_HEIGHT: u16 = 10;
+const DURATION: u64 = 10;
 
 #[derive(Debug, Clone, Parser)]
 #[command(version)]
@@ -30,6 +32,14 @@ pub struct Args {
     /// difficulty level
     #[arg(short, long, value_enum)]
     difficulty: Option<Difficulty>,
+    /// duration
+    #[arg(long, value_parser = parse_duration)]
+    duration: Option<Duration>,
+}
+
+fn parse_duration(arg: &str) -> Result<Duration> {
+    let seconds = arg.parse()?;
+    Ok(Duration::from_secs(seconds))
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum, PartialEq)]
@@ -109,7 +119,7 @@ impl Game {
         let (r, g, b) = color();
         println!("{}", GAMES.truecolor(r, g, b));
         match self.prompt_user() {
-            GameOptions::Coins => coins::run_coins(self.args.x, self.args.y, self.difficulty)?,
+            GameOptions::Coins => coins::run_coins(self.args.x, self.args.y, self.difficulty, self.args.duration)?,
             GameOptions::TreasureSeeker => treasure::run_treasure_seek(self.args.x, self.args.y, self.difficulty)?,
             GameOptions::Quit => {
                 println!("thanks for playing!");

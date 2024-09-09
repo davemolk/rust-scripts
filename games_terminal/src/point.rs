@@ -1,12 +1,12 @@
 use super::movement::Direction;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Point {
     pub x: u16,
     pub y: u16,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MovingPoint {
     pub position: Point,
     pub direction: Direction,
@@ -25,25 +25,58 @@ impl MovingPoint {
                 if self.position.y > 1 && !Self::collision(Point{x: self.position.x, y: self.position.y - 1}, points) {
                     self.position.y = self.position.y.saturating_sub(self.speed);
                 } else {
-                    self.direction = Direction::Down;
+                    self.direction.reverse();
                 }
             }
             Direction::Down => {
                 if self.position.y < board_height && !Self::collision(Point{x: self.position.x, y: self.position.y + 1}, points) {
                     self.position.y = self.position.y.saturating_add(self.speed);
                 } else {
-                    self.direction = Direction::Up;
+                    self.direction.reverse();
                 }
             }
             Direction::Left => {
                 if self.position.x > 1 && !Self::collision(Point{x: self.position.x - 1, y: self.position.y}, points) {
                     self.position.x = self.position.x.saturating_sub(self.speed);
                 } else {
-                    self.direction = Direction::Right;
+                    self.direction.reverse();
                 }
             }
             Direction::Right => {
                 if self.position.x < board_width && !Self::collision(Point{x: self.position.x + 1 , y: self.position.y}, points) {
+                    self.position.x = self.position.x.saturating_add(self.speed);
+                } else {
+                    self.direction.reverse();
+                }
+            }
+        }
+    }
+    // todo: need to check for coin collisions w/ other coins
+    pub fn update_moving_position(&mut self, board_width: u16, board_height: u16) {
+        match self.direction {
+            Direction::Up => {
+                if self.position.y > 1 {
+                    self.position.y = self.position.y.saturating_sub(self.speed);
+                } else {
+                    self.direction = Direction::Down;
+                }
+            }
+            Direction::Down => {
+                if self.position.y < board_height {
+                    self.position.y = self.position.y.saturating_add(self.speed);
+                } else {
+                    self.direction = Direction::Up;
+                }
+            }
+            Direction::Left => {
+                if self.position.x > 1 {
+                    self.position.x = self.position.x.saturating_sub(self.speed);
+                } else {
+                    self.direction = Direction::Right;
+                }
+            }
+            Direction::Right => {
+                if self.position.x < board_width {
                     self.position.x = self.position.x.saturating_add(self.speed);
                 } else {
                     self.direction = Direction::Left;
@@ -54,6 +87,14 @@ impl MovingPoint {
     fn collision(point: Point, points: Vec<Point>) -> bool {
         for p in points {
             if point == p {
+                return true;
+            }
+        }
+        false
+    }
+    fn moving_collision(point: Point, points: Vec<MovingPoint>) -> bool {
+        for p in points {
+            if point == p.position {
                 return true;
             }
         }

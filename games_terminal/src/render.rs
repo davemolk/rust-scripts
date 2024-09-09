@@ -1,5 +1,5 @@
 use anyhow::Result;
-use std::io::{Stdout, Write};
+use std::{collections::HashSet, io::{Stdout, Write}};
 use crossterm::{
     cursor::{Hide, MoveTo, Show}, 
     style::{Color, Print, ResetColor, SetForegroundColor}, 
@@ -7,9 +7,11 @@ use crossterm::{
     ExecutableCommand, 
 };
 
-use crate::{point::Point, Difficulty};
-
-use super::BANNER_HEIGHT;
+use super::{
+    BANNER_HEIGHT,
+    point::{Point, MovingPoint},
+    Difficulty,
+};
 
 pub fn prepare_screen(stdout: &mut Stdout, width: u16, height: u16) -> Result<()> {
     enable_raw_mode()?;
@@ -95,6 +97,28 @@ pub fn draw_points(stdout: &mut Stdout, character: char, points: &Vec<Point>, co
     }
     Ok(())
 }
+
+pub fn draw_moving_points(stdout: &mut Stdout, character: char, points: &Vec<MovingPoint>, color: Color) -> Result<()> {
+    for point in points {
+        stdout
+            .execute(SetForegroundColor(color))?
+            .execute(MoveTo(point.position.x, point.position.y))?
+            .execute(Print(character))?
+            .flush()?;
+    }
+    Ok(())
+}
+
+// pub fn draw_moving_points2(stdout: &mut Stdout, character: char, points: &HashSet<MovingPoint>, color: Color) -> Result<()> {
+//     for point in points {
+//         stdout
+//             .execute(SetForegroundColor(color))?
+//             .execute(MoveTo(point.position.x, point.position.y))?
+//             .execute(Print(character))?
+//             .flush()?;
+//     }
+//     Ok(())
+// }
 
 pub fn cleanup(stdout: &mut Stdout, orig_x: u16, orig_y: u16) -> Result<()> {
     stdout

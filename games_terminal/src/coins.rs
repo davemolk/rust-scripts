@@ -7,7 +7,7 @@ use crossterm::{
 use std::time::Duration;
 use rand::Rng;
 
-use crate::{input, render};
+use crate::{input, movement, render};
 
 use super::{
     Difficulty,
@@ -16,6 +16,7 @@ use super::{
     WIDTH,
     BOARD_HEIGHT,
     BANNER_HEIGHT,
+    DURATION,
     timer::Timer,
 };
 
@@ -26,13 +27,16 @@ struct Game {
     lives: u8,
     stdout: io::Stdout,
     difficulty: Difficulty,
+    // coins: HashSet<MovingPoint>,
     coins: Vec<MovingPoint>,
+    total_coins: usize,
     player: Point,
     normal_terminal: (u16, u16),
+    duration: Duration,
 }
 
 impl Game {
-    fn new(width: Option<u16>, height: Option<u16>, difficulty: Difficulty) -> Self {
+    fn new(width: Option<u16>, height: Option<u16>, difficulty: Difficulty, duration: Option<Duration>) -> Self {
         let w = match width {
             Some(w) => w,
             None => WIDTH
@@ -40,6 +44,10 @@ impl Game {
         let h = match height {
             Some(h) => h,
             None => BOARD_HEIGHT,
+        };
+        let d = match duration {
+            Some(d) => d,
+            None => Duration::from_secs(DURATION),
         };
         let normal_terminal = crossterm::terminal::size().unwrap();
         Game{
@@ -50,8 +58,10 @@ impl Game {
             stdout: io::stdout(),
             difficulty,
             player: Point { x: w / 2, y: h / 2 },
-            coins: vec![],
+            coins: Vec::new(),
+            total_coins: 1,
             normal_terminal,
+            duration: d,
         }
     }
     fn handle_input(&mut self, key: KeyCode) -> bool {
@@ -81,23 +91,65 @@ impl Game {
             }
         }
     }
+    fn spawn_coins(&mut self) {
+        while self.coins.len() < self.total_coins {
+            let mut x: u16;
+            let mut y: u16;
+            loop {
+                x = rand::thread_rng().gen_range(1..self.width);
+                y = rand::thread_rng().gen_range(1..self.height);
+                if x != self.player.x && y != self.player.y {
+                    if !movement::detect_moving_collision(Point{x, y}, &self.coins) {
+                        self.coins.push(MovingPoint{ 
+                            position: Point{x, y}, 
+                            direction: Direction::random(), 
+                            speed: 1,
+                            wait_to_draw: 0,
+                        });
+                        break
+                    }
+                }
+            }
+        }
+    }
     fn update_state(&mut self) {
-        
+        let mut to_remove: Vec<MovingPoint> = Vec::new();
+        self.coins.retain(|coin| {
+            if self.player == coin.position {
+                to_remove.push(coin.clone());
+                self.score += 1;
+                // remove coin from set
+                false
+            } else {
+                true
+            }
+        });
+        if self.coins.is_empty() {
+            self.total_coins += 1;
+            self.spawn_coins();
+        }
+        self.move_coins();
+    }
+    fn move_coins(&mut self) {
+        for coin in self.coins.iter_mut() {
+            coin.update_moving_position(self.width, self.height);
+        }
     }
     fn render(&mut self) -> Result<()> {
         render::render_screen(&mut self.stdout, self.width, self.height, Color::DarkBlue)?;
         render::render_banner(&mut self.stdout, self.height, self.lives, self.score, self.difficulty)?;
         render::draw_point(&mut self.stdout, '@', self.player.x, self.player.y, Color::DarkMagenta)?;
-
+        render::draw_moving_points(&mut self.stdout, 'o', &self.coins, Color::DarkYellow)?;
         Ok(())
     }
     fn run(&mut self) -> Result<()> {
         render::prepare_screen(&mut self.stdout, self.width, self.height)?;
+        self.spawn_coins();
         self.render()?;
-        let duration = Duration::from_secs(5);
-        let timer = Timer::new(duration);
+        let timer = Timer::new(self.duration);
         loop {
             if timer.has_expired() {
+                // print thanks for playing in banner w/ small sleep
                 break
             }
             if let Some(key) = input::poll_for_event() {
@@ -105,7 +157,7 @@ impl Game {
                     break
                 }
             }
-            // update state
+            self.update_state();
             self.render()?;
             std::thread::sleep(Duration::from_millis(100));
         }
@@ -113,8 +165,8 @@ impl Game {
     }
 }
 
-pub fn run_coins(width: Option<u16>, height: Option<u16>, difficulty: Difficulty) -> Result<()> {
-    let mut game = Game::new(width, height, difficulty);
+pub fn run_coins(width: Option<u16>, height: Option<u16>, difficulty: Difficulty, duration: Option<Duration>) -> Result<()> {
+    let mut game = Game::new(width, height, difficulty, duration);
     game.run()?;
     let (x, y) = game.normal_terminal;
     render::cleanup(&mut game.stdout, x, y)?;
